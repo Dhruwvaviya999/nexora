@@ -8,7 +8,13 @@
       "Bash(mkdir -p apps/common/migrations apps/core/migrations)",
       "Bash(touch apps/common/migrations/__init__.py apps/core/migrations/__init__.py apps/common/admin.py apps/core/admin.py apps/common/tests.py apps/core/tests.py apps/accounts/tests.py)",
       "Bash(printf 'from django.contrib import admin  # noqa: F401\\\\n\\\\n# Register core models here as they are added.\\\\n')",
-      "Bash(printf 'from django.contrib import admin  # noqa: F401\\\\n\\\\n# Register shared models here as they are added.\\\\n')"
+      "Bash(printf 'from django.contrib import admin  # noqa: F401\\\\n\\\\n# Register shared models here as they are added.\\\\n')",
+      "Bash(cd frontend *)",
+      "Bash(ls src/components/ui)",
+      "Bash(ls src/hooks)",
+      "Bash(cd backend *)",
+      "Bash(mkdir -p apps/workspaces/migrations)",
+      "Bash(touch apps/workspaces/__init__.py apps/workspaces/migrations/__init__.py apps/workspaces/tests.py)"
     ]
   }
 }

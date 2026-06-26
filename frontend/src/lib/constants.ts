@@ -17,6 +17,29 @@ export const API_BASE_URL = env.NEXT_PUBLIC_API_URL;
  */
 export const API_ROUTES = {
   health: "/health/",
+  auth: {
+    register: "/auth/register/",
+    login: "/auth/login/",
+    refresh: "/auth/refresh/",
+    logout: "/auth/logout/",
+    me: "/auth/me/",
+  },
+  workspaces: {
+    list: "/workspaces/",
+    detail: (id: string) => `/workspaces/${id}/`,
+    members: (id: string) => `/workspaces/${id}/members/`,
+  },
+} as const;
+
+/** Client-side route paths used for navigation and guards. */
+export const ROUTES = {
+  home: "/",
+  login: "/login",
+  register: "/register",
+  dashboard: "/dashboard",
+  workspaces: "/workspaces",
+  newWorkspace: "/workspaces/new",
+  workspaceSettings: (id: string) => `/workspaces/${id}/settings`,
 } as const;
 
 /** localStorage / cookie keys (auth tokens land here in Phase 2). */

@@ -5,9 +5,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import Link from "next/link";
+
 import { Button } from "@/components/ui/button";
 import { SiteHeader } from "@/components/layout/site-header";
-import { APP } from "@/lib/constants";
+import { APP, ROUTES } from "@/lib/constants";
 
 export default function Home() {
   return (
@@ -26,8 +28,12 @@ export default function Home() {
             {APP.description}
           </p>
           <div className="flex items-center justify-center gap-3 pt-2">
-            <Button>Get started</Button>
-            <Button variant="outline">View docs</Button>
+            <Button asChild>
+              <Link href={ROUTES.register}>Get started</Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href={ROUTES.login}>Sign in</Link>
+            </Button>
           </div>
         </div>
 

@@ -16,7 +16,7 @@ drf-spectacular==0.28.0
 # Configuration & database
 # ---------------------------------------------------------------------------
 django-environ==0.11.2
-psycopg[binary]==3.2.3
+psycopg[binary]==3.2.13
 
 # ---------------------------------------------------------------------------
 # Production server (used in deploys; harmless locally)
