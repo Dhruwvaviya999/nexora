@@ -29,6 +29,21 @@ export const API_ROUTES = {
     detail: (id: string) => `/workspaces/${id}/`,
     members: (id: string) => `/workspaces/${id}/members/`,
   },
+  dashboard: "/dashboard/",
+  projects: {
+    list: "/projects/",
+    detail: (id: string) => `/projects/${id}/`,
+    archive: (id: string) => `/projects/${id}/archive/`,
+    restore: (id: string) => `/projects/${id}/restore/`,
+  },
+  tasks: {
+    list: "/tasks/",
+    detail: (id: string) => `/tasks/${id}/`,
+  },
+  documents: {
+    list: "/documents/",
+    detail: (id: string) => `/documents/${id}/`,
+  },
 } as const;
 
 /** Client-side route paths used for navigation and guards. */
@@ -40,7 +55,46 @@ export const ROUTES = {
   workspaces: "/workspaces",
   newWorkspace: "/workspaces/new",
   workspaceSettings: (id: string) => `/workspaces/${id}/settings`,
+  projects: "/projects",
+  newProject: "/projects/new",
+  project: (id: string) => `/projects/${id}`,
+  editProject: (id: string) => `/projects/${id}/edit`,
+  tasks: "/tasks",
+  newTask: "/tasks/new",
+  task: (id: string) => `/tasks/${id}`,
+  editTask: (id: string) => `/tasks/${id}/edit`,
+  documents: "/documents",
+  newDocument: "/documents/new",
+  document: (id: string) => `/documents/${id}`,
+  search: "/search",
+  settings: "/settings",
 } as const;
+
+/** Display metadata for the enum values shared by the backend. */
+export const PROJECT_STATUSES = [
+  { value: "planning", label: "Planning" },
+  { value: "active", label: "Active" },
+  { value: "on_hold", label: "On hold" },
+  { value: "completed", label: "Completed" },
+] as const;
+
+export const TASK_STATUSES = [
+  { value: "todo", label: "Todo" },
+  { value: "in_progress", label: "In progress" },
+  { value: "review", label: "Review" },
+  { value: "completed", label: "Completed" },
+  { value: "cancelled", label: "Cancelled" },
+] as const;
+
+export const TASK_PRIORITIES = [
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "critical", label: "Critical" },
+] as const;
+
+/** Default page size mirrors DRF's PAGE_SIZE. */
+export const PAGE_SIZE = 20;
 
 /** localStorage / cookie keys (auth tokens land here in Phase 2). */
 export const STORAGE_KEYS = {

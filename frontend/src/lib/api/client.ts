@@ -14,11 +14,27 @@ import type { RefreshResponse } from "@/types/auth";
 
 type RequestOptions = Omit<RequestInit, "body"> & {
   body?: unknown;
+  /** Query string params appended to the URL (null/undefined/"" are skipped). */
+  params?: Record<string, string | number | boolean | null | undefined>;
   /** Skip auth header + refresh (used by login/register/refresh themselves). */
   skipAuth?: boolean;
   /** Internal: prevents infinite refresh loops. */
   _isRetry?: boolean;
 };
+
+function buildQuery(
+  params?: Record<string, string | number | boolean | null | undefined>
+): string {
+  if (!params) return "";
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== "") {
+      search.append(key, String(value));
+    }
+  }
+  const qs = search.toString();
+  return qs ? `?${qs}` : "";
+}
 
 let refreshPromise: Promise<string | null> | null = null;
 
@@ -56,7 +72,7 @@ function getRefreshedToken(): Promise<string | null> {
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { body, headers, skipAuth, _isRetry, ...rest } = options;
+  const { body, headers, skipAuth, params, _isRetry, ...rest } = options;
 
   const authHeaders: Record<string, string> = {};
   if (!skipAuth) {
@@ -64,14 +80,26 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     if (access) authHeaders.Authorization = `Bearer ${access}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  // FormData (file uploads) must NOT be JSON-encoded; let the browser set the
+  // multipart Content-Type (with boundary) itself.
+  const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
+  const baseHeaders: Record<string, string> = isFormData
+    ? {}
+    : { "Content-Type": "application/json" };
+
+  const response = await fetch(`${API_BASE_URL}${path}${buildQuery(params)}`, {
     ...rest,
     headers: {
-      "Content-Type": "application/json",
+      ...baseHeaders,
       ...authHeaders,
       ...headers,
     },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body:
+      body === undefined
+        ? undefined
+        : isFormData
+          ? (body as FormData)
+          : JSON.stringify(body),
   });
 
   // Transparent refresh-and-retry on a single 401.
