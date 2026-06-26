@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(head -20)",
+      "Bash(xargs grep -l \"provider\")",
+      "Bash(rm -f config/settings.py)",
+      "Bash(mkdir -p config/settings apps/common apps/core apps/accounts/migrations)",
+      "Bash(mkdir -p apps/common/migrations apps/core/migrations)",
+      "Bash(touch apps/common/migrations/__init__.py apps/core/migrations/__init__.py apps/common/admin.py apps/core/admin.py apps/common/tests.py apps/core/tests.py apps/accounts/tests.py)",
+      "Bash(printf 'from django.contrib import admin  # noqa: F401\\\\n\\\\n# Register core models here as they are added.\\\\n')",
+      "Bash(printf 'from django.contrib import admin  # noqa: F401\\\\n\\\\n# Register shared models here as they are added.\\\\n')"
+    ]
+  }
+}
