@@ -50,6 +50,7 @@ DJANGO_APPS = [
 THIRD_PARTY_APPS = [
     "rest_framework",
     "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
     "django_filters",
     "drf_spectacular",
@@ -60,6 +61,7 @@ LOCAL_APPS = [
     "apps.common",
     "apps.core",
     "apps.accounts",
+    "apps.workspaces",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -172,9 +174,11 @@ SIMPLE_JWT = {
         days=env.int("JWT_REFRESH_TOKEN_LIFETIME_DAYS", default=7)
     ),
     "ROTATE_REFRESH_TOKENS": True,
-    "BLACKLIST_AFTER_ROTATION": False,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "UPDATE_LAST_LOGIN": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
-    "SIGNING_KEY": env("JWT_SIGNING_KEY", default=SECRET_KEY),
+    # Fall back to SECRET_KEY when JWT_SIGNING_KEY is unset *or* blank.
+    "SIGNING_KEY": env("JWT_SIGNING_KEY", default="") or SECRET_KEY,
 }
 
 # ---------------------------------------------------------------------------

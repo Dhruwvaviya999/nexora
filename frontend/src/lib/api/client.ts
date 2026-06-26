@@ -1,41 +1,87 @@
-import { API_BASE_URL } from "@/lib/constants";
+import { API_BASE_URL, API_ROUTES } from "@/lib/constants";
+import { tokenStorage } from "@/lib/auth/token-storage";
 import type { ApiError } from "@/types";
+import type { RefreshResponse } from "@/types/auth";
 
 /**
- * Thin typed wrapper around `fetch`.
+ * Typed `fetch` wrapper with automatic JWT handling.
  *
- * - Prefixes every request with the versioned API base URL.
- * - Sends/receives JSON by default.
+ * - Injects `Authorization: Bearer <access>` when a token is present.
+ * - On a 401, transparently attempts a single token refresh and retries the
+ *   request once. Concurrent 401s share one in-flight refresh.
  * - Normalises non-2xx responses into a consistent `ApiError`.
- *
- * Auth headers and token refresh are intentionally NOT here yet — they slot in
- * during Phase 2 via the `getAuthHeader` hook below.
  */
 
 type RequestOptions = Omit<RequestInit, "body"> & {
-  /** JSON-serialisable body; stringified automatically. */
   body?: unknown;
+  /** Skip auth header + refresh (used by login/register/refresh themselves). */
+  skipAuth?: boolean;
+  /** Internal: prevents infinite refresh loops. */
+  _isRetry?: boolean;
 };
 
-/** Placeholder for Phase 2 — returns auth headers once JWT lands. */
-function getAuthHeader(): Record<string, string> {
-  return {};
+let refreshPromise: Promise<string | null> | null = null;
+
+async function refreshAccessToken(): Promise<string | null> {
+  const refresh = tokenStorage.getRefresh();
+  if (!refresh) return null;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}${API_ROUTES.auth.refresh}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh }),
+    });
+    if (!res.ok) {
+      tokenStorage.clear();
+      return null;
+    }
+    const data: RefreshResponse = await res.json();
+    tokenStorage.set(data.access, data.refresh);
+    return data.access;
+  } catch {
+    tokenStorage.clear();
+    return null;
+  }
+}
+
+/** Ensures only one refresh runs at a time across concurrent requests. */
+function getRefreshedToken(): Promise<string | null> {
+  if (!refreshPromise) {
+    refreshPromise = refreshAccessToken().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { body, headers, ...rest } = options;
+  const { body, headers, skipAuth, _isRetry, ...rest } = options;
+
+  const authHeaders: Record<string, string> = {};
+  if (!skipAuth) {
+    const access = tokenStorage.getAccess();
+    if (access) authHeaders.Authorization = `Bearer ${access}`;
+  }
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...rest,
     headers: {
       "Content-Type": "application/json",
-      ...getAuthHeader(),
+      ...authHeaders,
       ...headers,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
-  // 204 No Content and other empty bodies.
+  // Transparent refresh-and-retry on a single 401.
+  if (response.status === 401 && !skipAuth && !_isRetry) {
+    const newAccess = await getRefreshedToken();
+    if (newAccess) {
+      return request<T>(path, { ...options, _isRetry: true });
+    }
+  }
+
   const text = await response.text();
   const data = text ? JSON.parse(text) : null;
 
