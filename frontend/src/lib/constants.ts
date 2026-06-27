@@ -28,6 +28,28 @@ export const API_ROUTES = {
     list: "/workspaces/",
     detail: (id: string) => `/workspaces/${id}/`,
     members: (id: string) => `/workspaces/${id}/members/`,
+    member: (id: string, memberId: string) =>
+      `/workspaces/${id}/members/${memberId}/`,
+    transferOwnership: (id: string) => `/workspaces/${id}/transfer-ownership/`,
+  },
+  comments: {
+    list: "/comments/",
+    detail: (id: string) => `/comments/${id}/`,
+    reply: (id: string) => `/comments/${id}/reply/`,
+  },
+  notifications: {
+    list: "/notifications/",
+    read: (id: string) => `/notifications/${id}/read/`,
+    readAll: "/notifications/read-all/",
+    unreadCount: "/notifications/unread-count/",
+  },
+  activities: "/activities/",
+  invitations: {
+    list: "/invitations/",
+    detail: (token: string) => `/invitations/${token}/`,
+    accept: (token: string) => `/invitations/${token}/accept/`,
+    reject: (token: string) => `/invitations/${token}/reject/`,
+    resend: (token: string) => `/invitations/${token}/resend/`,
   },
   dashboard: "/dashboard/",
   projects: {
@@ -68,6 +90,9 @@ export const ROUTES = {
   document: (id: string) => `/documents/${id}`,
   search: "/search",
   settings: "/settings",
+  notifications: "/notifications",
+  activity: "/activity",
+  invitations: "/invitations",
 } as const;
 
 /** Display metadata for the enum values shared by the backend. */
