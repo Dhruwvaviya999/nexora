@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { PageHeader } from "@/components/shared/page-header";
+import { CollaborationTabs } from "@/components/comments/collaboration-tabs";
 import { useDocument } from "@/hooks/use-documents";
 import { formatBytes, formatDateTime } from "@/lib/format";
 
@@ -62,6 +63,8 @@ export default function DocumentDetailPage() {
           <Detail label="Uploaded" value={formatDateTime(doc.created_at)} />
         </CardContent>
       </Card>
+
+      <CollaborationTabs targetType="document" targetId={doc.id} />
     </div>
   );
 }

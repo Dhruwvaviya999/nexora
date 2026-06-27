@@ -25,6 +25,7 @@ import { Separator } from "@/components/ui/separator";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { PriorityBadge } from "@/components/shared/priority-badge";
+import { CollaborationTabs } from "@/components/comments/collaboration-tabs";
 import { useTask, useUpdateTask } from "@/hooks/use-tasks";
 import { toTaskPayload } from "@/lib/api/tasks";
 import { getErrorMessage } from "@/lib/api/errors";
@@ -150,6 +151,8 @@ export default function TaskDetailPage() {
           Created {formatDate(task.created_at)} · Updated {formatDate(task.updated_at)}
         </CardContent>
       </Card>
+
+      <CollaborationTabs targetType="task" targetId={task.id} />
     </div>
   );
 }
