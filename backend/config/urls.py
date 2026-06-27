@@ -23,6 +23,7 @@ api_v1_patterns = [
     path("tasks/", include("apps.tasks.urls")),
     path("documents/", include("apps.documents.urls")),
     path("comments/", include("apps.comments.urls")),
+    path("mentions/", include("apps.mentions.urls")),
 ]
 
 urlpatterns = [
