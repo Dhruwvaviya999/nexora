@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Activity,
+  Bell,
   FileText,
   FolderKanban,
   LayoutDashboard,
@@ -32,6 +34,8 @@ const NAV_MAIN = [
   { title: "Projects", href: ROUTES.projects, icon: FolderKanban },
   { title: "Tasks", href: ROUTES.tasks, icon: ListTodo },
   { title: "Documents", href: ROUTES.documents, icon: FileText },
+  { title: "Activity", href: ROUTES.activity, icon: Activity },
+  { title: "Notifications", href: ROUTES.notifications, icon: Bell },
   { title: "Search", href: ROUTES.search, icon: Search },
 ];
 
