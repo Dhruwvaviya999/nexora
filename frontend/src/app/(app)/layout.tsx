@@ -12,6 +12,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppBreadcrumbs } from "@/components/layout/app-breadcrumbs";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 import { useAuth } from "@/providers/auth-provider";
 import { WorkspaceProvider } from "@/providers/workspace-provider";
 import { ROUTES } from "@/lib/constants";
@@ -55,6 +56,9 @@ export default function AppLayout({
             <SidebarTrigger className="-ml-1" />
             <Separator orientation="vertical" className="mr-2 h-4" />
             <AppBreadcrumbs />
+            <div className="ml-auto flex items-center gap-1">
+              <NotificationBell />
+            </div>
           </header>
           <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
             {children}

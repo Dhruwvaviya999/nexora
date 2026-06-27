@@ -22,4 +22,17 @@ export const workspacesApi = {
 
   members: (id: string) =>
     apiClient.get<WorkspaceMember[]>(API_ROUTES.workspaces.members(id)),
+
+  updateMemberRole: (id: string, memberId: string, role: string) =>
+    apiClient.patch<WorkspaceMember>(API_ROUTES.workspaces.member(id, memberId), {
+      role,
+    }),
+
+  removeMember: (id: string, memberId: string) =>
+    apiClient.delete<void>(API_ROUTES.workspaces.member(id, memberId)),
+
+  transferOwnership: (id: string, userId: string) =>
+    apiClient.post<Workspace>(API_ROUTES.workspaces.transferOwnership(id), {
+      user_id: userId,
+    }),
 };
