@@ -25,6 +25,7 @@ api_v1_patterns = [
     path("comments/", include("apps.comments.urls")),
     path("mentions/", include("apps.mentions.urls")),
     path("notifications/", include("apps.notifications.urls")),
+    path("activities/", include("apps.activities.urls")),
 ]
 
 urlpatterns = [
