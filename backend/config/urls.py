@@ -22,6 +22,7 @@ api_v1_patterns = [
     path("projects/", include("apps.projects.urls")),
     path("tasks/", include("apps.tasks.urls")),
     path("documents/", include("apps.documents.urls")),
+    path("comments/", include("apps.comments.urls")),
 ]
 
 urlpatterns = [
