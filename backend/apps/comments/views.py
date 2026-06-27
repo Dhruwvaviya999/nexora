@@ -25,6 +25,13 @@ class CommentViewSet(viewsets.ModelViewSet):
     serializer_class = CommentSerializer
     permission_classes = [IsAuthenticated, IsAuthorOrWorkspaceAdmin]
 
+    def get_permissions(self):
+        # Posting and replying only require membership (enforced in
+        # perform_create); the author/admin object check is for edit/delete.
+        if self.action in ("create", "reply", "list", "retrieve"):
+            return [IsAuthenticated()]
+        return [IsAuthenticated(), IsAuthorOrWorkspaceAdmin()]
+
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
             return Comment.objects.none()
