@@ -1,0 +1,54 @@
+"""
+Root URL configuration.
+
+API routes are versioned under ``/api/v1/``. Each version delegates to the
+included app URLConfs so new versions can be added side-by-side later.
+"""
+
+from django.conf import settings
+from django.conf.urls.static import static
+from django.contrib import admin
+from django.urls import include, path
+from drf_spectacular.views import (
+    SpectacularAPIView,
+    SpectacularRedocView,
+    SpectacularSwaggerView,
+)
+
+api_v1_patterns = [
+    path("", include("apps.core.urls")),
+    path("auth/", include("apps.accounts.urls")),
+    path("workspaces/", include("apps.workspaces.urls")),
+    path("projects/", include("apps.projects.urls")),
+    path("tasks/", include("apps.tasks.urls")),
+    path("documents/", include("apps.documents.urls")),
+    path("comments/", include("apps.comments.urls")),
+    path("mentions/", include("apps.mentions.urls")),
+    path("notifications/", include("apps.notifications.urls")),
+    path("activities/", include("apps.activities.urls")),
+    path("invitations/", include("apps.invitations.urls")),
+    path("ai/", include("apps.ai.urls")),
+]
+
+urlpatterns = [
+    path("admin/", admin.site.urls),
+    # Versioned API
+    path("api/v1/", include((api_v1_patterns, "v1"), namespace="v1")),
+    # OpenAPI schema & docs
+    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+    path(
+        "api/docs/",
+        SpectacularSwaggerView.as_view(url_name="schema"),
+        name="swagger-ui",
+    ),
+    path(
+        "api/redoc/",
+        SpectacularRedocView.as_view(url_name="schema"),
+        name="redoc",
+    ),
+]
+
+# Serve uploaded media via the dev server. In production a real object store
+# (S3/Cloudinary) or the web server handles this.
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

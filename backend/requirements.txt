@@ -1,0 +1,45 @@
+# ---------------------------------------------------------------------------
+# Core framework
+# ---------------------------------------------------------------------------
+Django==5.1.4
+
+# ---------------------------------------------------------------------------
+# REST API
+# ---------------------------------------------------------------------------
+djangorestframework==3.15.2
+djangorestframework-simplejwt==5.3.1
+django-cors-headers==4.6.0
+django-filter==24.3
+drf-spectacular==0.28.0
+
+# ---------------------------------------------------------------------------
+# Configuration & database
+# ---------------------------------------------------------------------------
+django-environ==0.11.2
+psycopg[binary]==3.2.13
+
+# ---------------------------------------------------------------------------
+# AI / RAG (Phase 5)
+# Versions below are what resolve on Python 3.14 (this project's interpreter).
+# ---------------------------------------------------------------------------
+# Vector storage + similarity (Django field + query expressions for pgvector).
+# NOTE: this is the Python client only — the pgvector *server extension* must be
+# installed into PostgreSQL separately (CREATE EXTENSION vector).
+pgvector==0.3.6
+# Default local embedding provider (all-MiniLM-L6-v2, 384 dims). Pulls in torch.
+sentence-transformers==5.6.0
+# Document text extraction.
+pypdf==5.1.0
+python-docx==1.1.2
+# LLM providers (abstracted behind apps.ai.providers; imported lazily).
+google-generativeai==0.8.3
+openai==1.57.4
+# HTTP client for the Ollama provider.
+requests==2.34.2
+# Encrypts AISettings.api_key at rest (Fernet).
+cryptography==44.0.0
+
+# ---------------------------------------------------------------------------
+# Production server (used in deploys; harmless locally)
+# ---------------------------------------------------------------------------
+gunicorn==23.0.0
