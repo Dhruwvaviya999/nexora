@@ -45,3 +45,15 @@ export function useDeleteDocument() {
     onSuccess: () => qc.invalidateQueries({ queryKey: KEYS.all }),
   });
 }
+
+/** Re-run the RAG embedding pipeline for a document (Phase 5). */
+export function useReindexDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => documentsApi.reindex(id),
+    onSuccess: (_res, id) => {
+      qc.invalidateQueries({ queryKey: KEYS.detail(id) });
+      qc.invalidateQueries({ queryKey: KEYS.all });
+    },
+  });
+}

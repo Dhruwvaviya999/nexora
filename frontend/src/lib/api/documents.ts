@@ -25,4 +25,12 @@ export const documentsApi = {
     apiClient.patch<DocumentItem>(API_ROUTES.documents.detail(id), data),
   remove: (id: string) =>
     apiClient.delete<void>(API_ROUTES.documents.detail(id)),
+  /** Re-run text extraction + embedding for the RAG index (Phase 5). */
+  reindex: (id: string) =>
+    apiClient.post<{
+      document: string;
+      status: string;
+      chunk_count: number;
+      error: string;
+    }>(API_ROUTES.documents.reindex(id)),
 };

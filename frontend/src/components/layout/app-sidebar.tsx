@@ -5,12 +5,16 @@ import { usePathname } from "next/navigation";
 import {
   Activity,
   Bell,
+  Bot,
   FileText,
   FolderKanban,
   LayoutDashboard,
+  LibraryBig,
   ListTodo,
+  MessagesSquare,
   Search,
   Settings,
+  Sparkles,
 } from "lucide-react";
 
 import {
@@ -39,6 +43,13 @@ const NAV_MAIN = [
   { title: "Search", href: ROUTES.search, icon: Search },
 ];
 
+const NAV_AI = [
+  { title: "AI Assistant", href: ROUTES.ai, icon: Sparkles, exact: true },
+  { title: "AI Chat", href: ROUTES.aiChat, icon: MessagesSquare },
+  { title: "AI Search", href: ROUTES.aiSearch, icon: Bot },
+  { title: "Prompt Library", href: ROUTES.aiTemplates, icon: LibraryBig },
+];
+
 const NAV_FOOTER = [{ title: "Settings", href: ROUTES.settings, icon: Settings }];
 
 export function AppSidebar() {
@@ -64,6 +75,30 @@ export function AppSidebar() {
                 <SidebarMenuButton
                   asChild
                   isActive={isActive(item.href)}
+                  tooltip={item.title}
+                >
+                  <Link href={item.href}>
+                    <item.icon />
+                    <span>{item.title}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>AI</SidebarGroupLabel>
+          <SidebarMenu>
+            {NAV_AI.map((item) => (
+              <SidebarMenuItem key={item.href}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={
+                    "exact" in item && item.exact
+                      ? pathname === item.href
+                      : isActive(item.href)
+                  }
                   tooltip={item.title}
                 >
                   <Link href={item.href}>
