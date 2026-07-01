@@ -11,6 +11,9 @@ class DocumentSerializer(serializers.ModelSerializer):
     created_by = UserSerializer(read_only=True)
     updated_by = UserSerializer(read_only=True)
     file_url = serializers.SerializerMethodField()
+    # Phase 5 — RAG ingestion status, surfaced so the UI can show progress.
+    embedding_status = serializers.SerializerMethodField()
+    chunk_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Document
@@ -24,6 +27,8 @@ class DocumentSerializer(serializers.ModelSerializer):
             "file_url",
             "file_type",
             "file_size",
+            "embedding_status",
+            "chunk_count",
             "uploaded_by",
             "created_by",
             "updated_by",
@@ -35,6 +40,8 @@ class DocumentSerializer(serializers.ModelSerializer):
             "file_url",
             "file_type",
             "file_size",
+            "embedding_status",
+            "chunk_count",
             "uploaded_by",
             "created_by",
             "updated_by",
@@ -49,6 +56,14 @@ class DocumentSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         url = obj.file.url
         return request.build_absolute_uri(url) if request else url
+
+    def get_embedding_status(self, obj) -> str | None:
+        # Latest embedding job's status, or None if the doc was never processed.
+        job = obj.embedding_jobs.order_by("-created_at").first()
+        return job.status if job else None
+
+    def get_chunk_count(self, obj) -> int:
+        return obj.chunks.count()
 
     def validate(self, attrs):
         # File is required on create, optional on update (metadata-only edits).
