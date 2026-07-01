@@ -26,6 +26,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { PriorityBadge } from "@/components/shared/priority-badge";
 import { CollaborationTabs } from "@/components/comments/collaboration-tabs";
+import { AISummaryCard } from "@/components/ai/ai-summary-card";
 import { useTask, useUpdateTask } from "@/hooks/use-tasks";
 import { toTaskPayload } from "@/lib/api/tasks";
 import { getErrorMessage } from "@/lib/api/errors";
@@ -151,6 +152,13 @@ export default function TaskDetailPage() {
           Created {formatDate(task.created_at)} · Updated {formatDate(task.updated_at)}
         </CardContent>
       </Card>
+
+      <AISummaryCard
+        targetType="task"
+        targetId={task.id}
+        title="Task summary"
+        description="An AI summary of this task."
+      />
 
       <CollaborationTabs targetType="task" targetId={task.id} />
     </div>

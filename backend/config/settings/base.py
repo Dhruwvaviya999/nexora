@@ -70,6 +70,9 @@ LOCAL_APPS = [
     "apps.notifications",
     "apps.activities",
     "apps.invitations",
+    # Phase 5 — AI Knowledge Assistant
+    "apps.knowledge",
+    "apps.ai",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -204,3 +207,48 @@ SPECTACULAR_SETTINGS = {
 # CORS
 # ---------------------------------------------------------------------------
 CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
+
+# ---------------------------------------------------------------------------
+# AI / RAG (Phase 5)
+# ---------------------------------------------------------------------------
+# Central configuration for the AI Knowledge Assistant. Per-workspace overrides
+# (provider, model, temperature, API key) live in apps.ai.models.AISettings and
+# take precedence over these defaults at runtime.
+#
+# IMPORTANT: ``EMBEDDING_DIM`` is baked into the pgvector column at migration
+# time. Changing it (e.g. switching to a 768/1536-dim provider) requires a new
+# migration that alters the ``DocumentChunk.embedding`` column.
+AI = {
+    # --- LLM (chat / summaries / action items) ---
+    "DEFAULT_LLM_PROVIDER": env("AI_LLM_PROVIDER", default="gemini"),
+    "DEFAULT_CHAT_MODEL": env("AI_CHAT_MODEL", default="gemini-2.0-flash"),
+    "DEFAULT_TEMPERATURE": env.float("AI_TEMPERATURE", default=0.2),
+    "DEFAULT_MAX_TOKENS": env.int("AI_MAX_TOKENS", default=1024),
+    # --- Embeddings (semantic search / retrieval) ---
+    "DEFAULT_EMBEDDING_PROVIDER": env(
+        "AI_EMBEDDING_PROVIDER", default="sentence_transformer"
+    ),
+    "DEFAULT_EMBEDDING_MODEL": env(
+        "AI_EMBEDDING_MODEL", default="all-MiniLM-L6-v2"
+    ),
+    "EMBEDDING_DIM": 384,
+    # --- Chunking ---
+    "CHUNK_SIZE_WORDS": env.int("AI_CHUNK_SIZE_WORDS", default=220),
+    "CHUNK_OVERLAP_WORDS": env.int("AI_CHUNK_OVERLAP_WORDS", default=40),
+    "EMBED_BATCH_SIZE": env.int("AI_EMBED_BATCH_SIZE", default=32),
+    # --- Retrieval ---
+    "SEARCH_TOP_K": env.int("AI_SEARCH_TOP_K", default=6),
+    # Cosine distance threshold above which a chunk is considered irrelevant
+    # (distance is 0 = identical .. 2 = opposite; similarity = 1 - distance).
+    "SEARCH_MAX_DISTANCE": env.float("AI_SEARCH_MAX_DISTANCE", default=0.75),
+    # --- Provider API keys (fallbacks; per-workspace keys override these) ---
+    "GEMINI_API_KEY": env("GEMINI_API_KEY", default=""),
+    "OPENAI_API_KEY": env("OPENAI_API_KEY", default=""),
+    "OLLAMA_BASE_URL": env("OLLAMA_BASE_URL", default="http://localhost:11434"),
+    # --- Security ---
+    # Fernet key for encrypting AISettings.api_key at rest. If unset, a key is
+    # derived from SECRET_KEY (fine for dev; set a dedicated key in production).
+    "FIELD_ENCRYPTION_KEY": env("AI_FIELD_ENCRYPTION_KEY", default=""),
+    # Hard cap on user-supplied prompt length (prompt-injection / abuse guard).
+    "MAX_INPUT_CHARS": env.int("AI_MAX_INPUT_CHARS", default=4000),
+}

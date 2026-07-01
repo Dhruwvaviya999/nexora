@@ -18,6 +18,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { TasksTable } from "@/components/tasks/tasks-table";
 import { DocumentsTable } from "@/components/documents/documents-table";
 import { CollaborationTabs } from "@/components/comments/collaboration-tabs";
+import { AISummaryCard } from "@/components/ai/ai-summary-card";
 import { useProject } from "@/hooks/use-projects";
 import { useTasks } from "@/hooks/use-tasks";
 import { useDocuments } from "@/hooks/use-documents";
@@ -107,6 +108,13 @@ export default function ProjectDetailPage() {
           )}
         </TabsContent>
       </Tabs>
+
+      <AISummaryCard
+        targetType="project"
+        targetId={project.id}
+        title="Project summary"
+        description="An AI overview of this project's status and tasks."
+      />
 
       <CollaborationTabs targetType="project" targetId={project.id} />
     </div>

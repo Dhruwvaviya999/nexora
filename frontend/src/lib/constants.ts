@@ -65,6 +65,19 @@ export const API_ROUTES = {
   documents: {
     list: "/documents/",
     detail: (id: string) => `/documents/${id}/`,
+    reindex: (id: string) => `/documents/${id}/reindex/`,
+  },
+  ai: {
+    chat: "/ai/chat/",
+    search: "/ai/search/",
+    summarize: "/ai/summarize/",
+    generateTasks: "/ai/generate-tasks/",
+    settings: "/ai/settings/",
+    conversations: "/ai/conversations/",
+    conversation: (id: string) => `/ai/conversations/${id}/`,
+    searchHistory: "/ai/search-history/",
+    promptTemplates: "/ai/prompt-templates/",
+    promptTemplate: (id: string) => `/ai/prompt-templates/${id}/`,
   },
 } as const;
 
@@ -93,7 +106,29 @@ export const ROUTES = {
   notifications: "/notifications",
   activity: "/activity",
   invitations: "/invitations",
+  // AI Knowledge Assistant (Phase 5)
+  ai: "/ai",
+  aiChat: "/ai/chat",
+  aiConversation: (id: string) => `/ai/chat/${id}`,
+  aiConversations: "/ai/conversations",
+  aiSearch: "/ai/search",
+  aiTemplates: "/ai/templates",
+  aiSettings: "/ai/settings",
 } as const;
+
+/** Provider/model options surfaced in the AI settings form. */
+export const AI_PROVIDERS = [
+  { value: "gemini", label: "Gemini (Google)" },
+  { value: "openai", label: "OpenAI" },
+  { value: "ollama", label: "Ollama (local)" },
+] as const;
+
+/** Suggested default chat models per provider (free-text is also allowed). */
+export const AI_MODELS_BY_PROVIDER: Record<string, string[]> = {
+  gemini: ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"],
+  openai: ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini"],
+  ollama: ["llama3.1", "llama3.2", "mistral", "qwen2.5"],
+};
 
 /** Display metadata for the enum values shared by the backend. */
 export const PROJECT_STATUSES = [
