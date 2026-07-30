@@ -9,6 +9,10 @@ const STATUS_STYLES: Record<string, { label: string; className: string }> = {
   planning: { label: "Planning", className: "bg-blue-500/15 text-blue-600 dark:text-blue-400" },
   active: { label: "Active", className: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" },
   on_hold: { label: "On hold", className: "bg-amber-500/15 text-amber-600 dark:text-amber-400" },
+  // Handover statuses
+  pending: { label: "Pending review", className: "bg-amber-500/15 text-amber-600 dark:text-amber-400" },
+  approved: { label: "Approved", className: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" },
+  rejected: { label: "Rejected", className: "bg-rose-500/15 text-rose-600 dark:text-rose-400" },
   // Task statuses
   todo: { label: "Todo", className: "bg-muted text-muted-foreground" },
   in_progress: { label: "In progress", className: "bg-blue-500/15 text-blue-600 dark:text-blue-400" },

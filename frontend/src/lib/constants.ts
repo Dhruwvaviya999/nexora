@@ -44,6 +44,8 @@ export const API_ROUTES = {
     unreadCount: "/notifications/unread-count/",
   },
   activities: "/activities/",
+  activitiesExport: "/activities/export/",
+  analytics: "/analytics/",
   invitations: {
     list: "/invitations/",
     detail: (token: string) => `/invitations/${token}/`,
@@ -61,6 +63,12 @@ export const API_ROUTES = {
   tasks: {
     list: "/tasks/",
     detail: (id: string) => `/tasks/${id}/`,
+  },
+  handovers: {
+    list: "/handovers/",
+    detail: (id: string) => `/handovers/${id}/`,
+    review: (id: string) => `/handovers/${id}/review/`,
+    export: (id: string) => `/handovers/${id}/export/`,
   },
   documents: {
     list: "/documents/",
@@ -87,6 +95,7 @@ export const ROUTES = {
   login: "/login",
   register: "/register",
   dashboard: "/dashboard",
+  analytics: "/analytics",
   workspaces: "/workspaces",
   newWorkspace: "/workspaces/new",
   workspaceSettings: (id: string) => `/workspaces/${id}/settings`,
@@ -98,6 +107,10 @@ export const ROUTES = {
   newTask: "/tasks/new",
   task: (id: string) => `/tasks/${id}`,
   editTask: (id: string) => `/tasks/${id}/edit`,
+  handovers: "/handovers",
+  newHandover: "/handovers/new",
+  handover: (id: string) => `/handovers/${id}`,
+  handoverReviews: "/handovers/reviews",
   documents: "/documents",
   newDocument: "/documents/new",
   document: (id: string) => `/documents/${id}`,
@@ -144,6 +157,12 @@ export const TASK_STATUSES = [
   { value: "review", label: "Review" },
   { value: "completed", label: "Completed" },
   { value: "cancelled", label: "Cancelled" },
+] as const;
+
+export const HANDOVER_STATUSES = [
+  { value: "pending", label: "Pending review" },
+  { value: "approved", label: "Approved" },
+  { value: "rejected", label: "Rejected" },
 ] as const;
 
 export const TASK_PRIORITIES = [

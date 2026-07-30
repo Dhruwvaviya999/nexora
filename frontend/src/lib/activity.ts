@@ -8,6 +8,9 @@ const VERBS: Record<string, string> = {
   "task.created": "created task",
   "task.updated": "updated task",
   "task.deleted": "deleted task",
+  "handover.created": "submitted a handover for",
+  "handover.updated": "updated a handover for",
+  "handover.deleted": "deleted a handover for",
   "document.created": "uploaded document",
   "document.updated": "updated document",
   "document.deleted": "deleted document",
@@ -19,6 +22,9 @@ const VERBS: Record<string, string> = {
   "member.invited": "invited a member",
 };
 
+/** All known action keys — drives the audit-log action filter. */
+export const ACTIVITY_ACTIONS = Object.keys(VERBS);
+
 /** Turn an activity into a verb + the affected object's label for display. */
 export function describeActivity(activity: Activity): {
   verb: string;
@@ -29,6 +35,7 @@ export function describeActivity(activity: Activity): {
   const label =
     (meta.name as string) ||
     (meta.title as string) ||
+    (meta.task as string) ||
     (meta.email as string) ||
     (meta.user as string) ||
     "";

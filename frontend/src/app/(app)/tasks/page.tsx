@@ -21,28 +21,49 @@ import { DataPagination } from "@/components/shared/data-pagination";
 import { TasksTable } from "@/components/tasks/tasks-table";
 import { useWorkspaceContext } from "@/providers/workspace-provider";
 import { useTasks } from "@/hooks/use-tasks";
+import { useProjects } from "@/hooks/use-projects";
+import { useWorkspaceMembers } from "@/hooks/use-workspaces";
 import { TASK_PRIORITIES, TASK_STATUSES, ROUTES } from "@/lib/constants";
 
 const ALL = "all";
+
+const SORT_OPTIONS = [
+  { value: "-created_at", label: "Newest first" },
+  { value: "created_at", label: "Oldest first" },
+  { value: "due_date", label: "Due soonest" },
+  { value: "title", label: "Title A–Z" },
+] as const;
 
 export default function TasksPage() {
   const { activeWorkspaceId, isLoading: wsLoading } = useWorkspaceContext();
   const [search, setSearch] = React.useState("");
   const [status, setStatus] = React.useState(ALL);
   const [priority, setPriority] = React.useState(ALL);
+  const [project, setProject] = React.useState(ALL);
+  const [assignee, setAssignee] = React.useState(ALL);
+  const [ordering, setOrdering] = React.useState<string>("-created_at");
   const [page, setPage] = React.useState(1);
+
+  const { data: projectsData } = useProjects({
+    workspace: activeWorkspaceId ?? undefined,
+  });
+  const { data: members } = useWorkspaceMembers(activeWorkspaceId ?? "");
 
   const { data, isLoading } = useTasks({
     workspace: activeWorkspaceId ?? undefined,
     search: search || undefined,
     status: status === ALL ? undefined : status,
     priority: priority === ALL ? undefined : priority,
+    project: project === ALL ? undefined : project,
+    assignee: assignee === ALL ? undefined : assignee,
+    ordering,
     page,
   });
 
   if (!wsLoading && !activeWorkspaceId) return <NoWorkspace />;
 
   const tasks = data?.results ?? [];
+  const projects = projectsData?.results ?? [];
 
   return (
     <div className="space-y-5">
@@ -55,7 +76,7 @@ export default function TasksPage() {
         </Button>
       </PageHeader>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <SearchInput
           value={search}
           onSearch={(v) => {
@@ -87,6 +108,44 @@ export default function TasksPage() {
             {TASK_PRIORITIES.map((p) => (
               <SelectItem key={p.value} value={p.value}>
                 {p.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={project} onValueChange={(v) => { setProject(v); setPage(1); }}>
+          <SelectTrigger className="sm:w-44">
+            <SelectValue placeholder="Project" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>All projects</SelectItem>
+            {projects.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={assignee} onValueChange={(v) => { setAssignee(v); setPage(1); }}>
+          <SelectTrigger className="sm:w-44">
+            <SelectValue placeholder="Assignee" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>All assignees</SelectItem>
+            {members?.map((m) => (
+              <SelectItem key={m.user.id} value={m.user.id}>
+                {m.user.name || m.user.email}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={ordering} onValueChange={(v) => { setOrdering(v); setPage(1); }}>
+          <SelectTrigger className="sm:w-40">
+            <SelectValue placeholder="Sort" />
+          </SelectTrigger>
+          <SelectContent>
+            {SORT_OPTIONS.map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
               </SelectItem>
             ))}
           </SelectContent>

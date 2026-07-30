@@ -18,6 +18,8 @@ class NotificationType(models.TextChoices):
     TASK_UPDATED = "task_updated", "Task updated"
     COMMENT_REPLY = "comment_reply", "Comment reply"
     WORKSPACE_INVITE = "workspace_invite", "Workspace invite"
+    HANDOVER_SUBMITTED = "handover_submitted", "Handover submitted"
+    HANDOVER_REVIEWED = "handover_reviewed", "Handover reviewed"
     SYSTEM = "system", "System"
 
 

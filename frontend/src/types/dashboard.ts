@@ -1,3 +1,4 @@
+import type { Handover } from "@/types/handover";
 import type { Project } from "@/types/project";
 import type { Task } from "@/types/task";
 import type { DocumentItem } from "@/types/document";
@@ -11,6 +12,8 @@ export interface DashboardStats {
   completed_tasks: number;
   overdue_tasks: number;
   total_documents: number;
+  my_tasks: number;
+  pending_handovers: number;
 }
 
 export interface Dashboard {
@@ -18,4 +21,5 @@ export interface Dashboard {
   recent_projects: Project[];
   recent_tasks: Task[];
   recent_documents: DocumentItem[];
+  pending_handovers: Handover[];
 }

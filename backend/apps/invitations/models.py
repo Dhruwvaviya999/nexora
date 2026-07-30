@@ -34,7 +34,7 @@ class InvitationStatus(models.TextChoices):
 
 
 # Owner is never an invitable role — ownership transfers are a separate flow.
-INVITABLE_ROLES = (WorkspaceRole.ADMIN, WorkspaceRole.MEMBER)
+INVITABLE_ROLES = (WorkspaceRole.ADMIN, WorkspaceRole.MANAGER, WorkspaceRole.MEMBER)
 
 
 class Invitation(BaseModel):

@@ -53,7 +53,7 @@ export function ProjectForm({
             <FormItem>
               <FormLabel>Name</FormLabel>
               <FormControl>
-                <Input placeholder="Website revamp" {...field} />
+                <Input placeholder="Website revamp" maxLength={150} {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -119,6 +119,7 @@ export function ProjectForm({
               <FormControl>
                 <Textarea
                   rows={4}
+                  maxLength={2000}
                   placeholder="What is this project about?"
                   {...field}
                 />

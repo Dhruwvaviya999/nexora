@@ -64,6 +64,7 @@ LOCAL_APPS = [
     "apps.workspaces",
     "apps.projects",
     "apps.tasks",
+    "apps.handovers",
     "apps.documents",
     "apps.comments",
     "apps.mentions",

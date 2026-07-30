@@ -7,6 +7,7 @@ _TARGET_PATHS = {
     "project": "/projects/",
     "task": "/tasks/",
     "document": "/documents/",
+    "handover": "/handovers/",
 }
 
 

@@ -2,14 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-import { activitiesApi } from "@/lib/api/activities";
-
-interface ActivityParams {
-  workspace?: string;
-  action?: string;
-  target_type?: string;
-  target_id?: string;
-}
+import { activitiesApi, type ActivityParams } from "@/lib/api/activities";
 
 export function useActivities(params: ActivityParams) {
   return useQuery({

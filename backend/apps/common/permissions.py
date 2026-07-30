@@ -55,6 +55,18 @@ class IsWorkspaceAdmin(BasePermission):
         )
 
 
+class IsWorkspaceManager(BasePermission):
+    """Allow workspace owners, admins, and managers (approval/review rights)."""
+
+    message = "You must be a workspace manager or admin."
+
+    def has_object_permission(self, request, view, obj):
+        from apps.workspaces.models import REVIEWER_ROLES
+
+        member = _membership(request.user, _resolve_workspace(obj))
+        return member is not None and member.role in REVIEWER_ROLES
+
+
 class IsWorkspaceOwner(BasePermission):
     """Allow only the workspace owner."""
 
