@@ -6,6 +6,8 @@ export type NotificationType =
   | "task_updated"
   | "comment_reply"
   | "workspace_invite"
+  | "handover_submitted"
+  | "handover_reviewed"
   | "system";
 
 export interface AppNotification {

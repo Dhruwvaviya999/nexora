@@ -8,6 +8,9 @@ const VERBS: Record<string, string> = {
   "task.created": "created task",
   "task.updated": "updated task",
   "task.deleted": "deleted task",
+  "handover.created": "submitted a handover for",
+  "handover.updated": "updated a handover for",
+  "handover.deleted": "deleted a handover for",
   "document.created": "uploaded document",
   "document.updated": "updated document",
   "document.deleted": "deleted document",
@@ -29,6 +32,7 @@ export function describeActivity(activity: Activity): {
   const label =
     (meta.name as string) ||
     (meta.title as string) ||
+    (meta.task as string) ||
     (meta.email as string) ||
     (meta.user as string) ||
     "";

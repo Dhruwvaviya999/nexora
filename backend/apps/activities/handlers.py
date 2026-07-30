@@ -11,6 +11,7 @@ from django.db.models.signals import post_delete, post_save
 from apps.activities.services import log_activity
 from apps.comments.models import Comment
 from apps.documents.models import Document
+from apps.handovers.models import Handover
 from apps.projects.models import Project
 from apps.tasks.models import Task
 from apps.workspaces.models import Workspace, WorkspaceMember
@@ -48,6 +49,7 @@ def _register_audited(model, entity, label):
 _register_audited(Project, "project", lambda i: {"name": i.name, "archived": i.archived})
 _register_audited(Task, "task", lambda i: {"title": i.title, "status": i.status})
 _register_audited(Document, "document", lambda i: {"title": i.title})
+_register_audited(Handover, "handover", lambda i: {"task": i.task.title, "status": i.status})
 
 
 def _on_comment_created(sender, instance, created, **kwargs):

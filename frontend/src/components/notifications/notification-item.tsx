@@ -2,8 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import {
+  ArrowLeftRight,
   AtSign,
   Bell,
+  ClipboardCheck,
   MessageSquare,
   SquareCheckBig,
   UserPlus,
@@ -21,6 +23,8 @@ const ICONS: Record<NotificationType, LucideIcon> = {
   workspace_invite: UserPlus,
   task_assigned: SquareCheckBig,
   task_updated: SquareCheckBig,
+  handover_submitted: ArrowLeftRight,
+  handover_reviewed: ClipboardCheck,
   system: Bell,
 };
 
