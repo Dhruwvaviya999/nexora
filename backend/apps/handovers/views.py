@@ -1,4 +1,6 @@
+from django.http import HttpResponse
 from django.utils import timezone
+from django.utils.text import slugify
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -140,3 +142,20 @@ class HandoverViewSet(WorkspaceScopedViewSet):
         )
 
         return Response(self.get_serializer(handover).data)
+
+    @extend_schema(
+        summary="Export the handover as a PDF",
+        responses={(200, "application/pdf"): bytes},
+    )
+    @action(detail=True, methods=["get"])
+    def export(self, request, pk=None):
+        """GET /handovers/{id}/export/ — printable PDF record of the handover."""
+        # Local import so the app works even before reportlab is installed.
+        from apps.handovers.pdf import render_handover_pdf
+
+        handover = self.get_object()
+        pdf = render_handover_pdf(handover)
+        filename = f"handover-{slugify(handover.task.title) or handover.pk}.pdf"
+        response = HttpResponse(pdf, content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response

@@ -27,3 +27,40 @@ class DashboardSerializer(serializers.Serializer):
     recent_tasks = TaskSerializer(many=True)
     recent_documents = DocumentSerializer(many=True)
     pending_handovers = HandoverSerializer(many=True)
+
+
+class StatusCountSerializer(serializers.Serializer):
+    status = serializers.CharField()
+    count = serializers.IntegerField()
+
+
+class PriorityCountSerializer(serializers.Serializer):
+    priority = serializers.CharField()
+    count = serializers.IntegerField()
+
+
+class WeeklyPointSerializer(serializers.Serializer):
+    week_start = serializers.DateField()
+    created = serializers.IntegerField()
+    completed = serializers.IntegerField()
+
+
+class WorkloadEntrySerializer(serializers.Serializer):
+    user_id = serializers.CharField()
+    name = serializers.CharField()
+    count = serializers.IntegerField()
+
+
+class HandoverStatsSerializer(serializers.Serializer):
+    pending = serializers.IntegerField()
+    approved = serializers.IntegerField()
+    rejected = serializers.IntegerField()
+    avg_review_hours = serializers.FloatField(allow_null=True)
+
+
+class AnalyticsSerializer(serializers.Serializer):
+    task_status = StatusCountSerializer(many=True)
+    task_priority = PriorityCountSerializer(many=True)
+    weekly = WeeklyPointSerializer(many=True)
+    workload = WorkloadEntrySerializer(many=True)
+    handovers = HandoverStatsSerializer()

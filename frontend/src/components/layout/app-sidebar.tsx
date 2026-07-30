@@ -7,6 +7,7 @@ import {
   ArrowLeftRight,
   Bell,
   Bot,
+  ChartColumn,
   ClipboardCheck,
   FileText,
   FolderKanban,
@@ -39,6 +40,7 @@ import { REVIEWER_ROLES } from "@/types/workspace";
 
 const NAV_MAIN = [
   { title: "Dashboard", href: ROUTES.dashboard, icon: LayoutDashboard },
+  { title: "Analytics", href: ROUTES.analytics, icon: ChartColumn },
   { title: "Projects", href: ROUTES.projects, icon: FolderKanban },
   { title: "Tasks", href: ROUTES.tasks, icon: ListTodo },
   { title: "Handovers", href: ROUTES.handovers, icon: ArrowLeftRight },

@@ -22,6 +22,9 @@ const VERBS: Record<string, string> = {
   "member.invited": "invited a member",
 };
 
+/** All known action keys — drives the audit-log action filter. */
+export const ACTIVITY_ACTIONS = Object.keys(VERBS);
+
 /** Turn an activity into a verb + the affected object's label for display. */
 export function describeActivity(activity: Activity): {
   verb: string;
