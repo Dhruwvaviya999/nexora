@@ -165,3 +165,19 @@ class HandoverAPITests(APITestCase):
         res = self.client.delete(f"{BASE}{handover_id}/")
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertTrue(Handover.objects.filter(pk=handover_id).exists())
+
+    # -- PDF export ---------------------------------------------------------
+
+    def test_member_can_export_pdf(self):
+        handover_id = self._submit().data["id"]
+        self.client.force_authenticate(self.manager)
+        res = self.client.get(f"{BASE}{handover_id}/export/")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res["Content-Type"], "application/pdf")
+        self.assertTrue(res.content.startswith(b"%PDF"))
+
+    def test_outsider_cannot_export_pdf(self):
+        handover_id = self._submit().data["id"]
+        self.client.force_authenticate(self.outsider)
+        res = self.client.get(f"{BASE}{handover_id}/export/")
+        self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)

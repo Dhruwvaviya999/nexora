@@ -44,6 +44,8 @@ export const API_ROUTES = {
     unreadCount: "/notifications/unread-count/",
   },
   activities: "/activities/",
+  activitiesExport: "/activities/export/",
+  analytics: "/analytics/",
   invitations: {
     list: "/invitations/",
     detail: (token: string) => `/invitations/${token}/`,
@@ -66,6 +68,7 @@ export const API_ROUTES = {
     list: "/handovers/",
     detail: (id: string) => `/handovers/${id}/`,
     review: (id: string) => `/handovers/${id}/review/`,
+    export: (id: string) => `/handovers/${id}/export/`,
   },
   documents: {
     list: "/documents/",
@@ -92,6 +95,7 @@ export const ROUTES = {
   login: "/login",
   register: "/register",
   dashboard: "/dashboard",
+  analytics: "/analytics",
   workspaces: "/workspaces",
   newWorkspace: "/workspaces/new",
   workspaceSettings: (id: string) => `/workspaces/${id}/settings`,

@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowRight, Loader2, Trash2 } from "lucide-react";
+import { ArrowRight, FileDown, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -22,9 +22,10 @@ import { HandoverReviewCard } from "@/components/handovers/handover-review-card"
 import { useAuth } from "@/providers/auth-provider";
 import { useWorkspaceContext } from "@/providers/workspace-provider";
 import { useDeleteHandover, useHandover } from "@/hooks/use-handovers";
+import { downloadFile } from "@/lib/api/download";
 import { getErrorMessage } from "@/lib/api/errors";
 import { formatDate } from "@/lib/format";
-import { ROUTES } from "@/lib/constants";
+import { API_ROUTES, ROUTES } from "@/lib/constants";
 import { REVIEWER_ROLES } from "@/types/workspace";
 import type { AuthUser } from "@/types/auth";
 
@@ -65,6 +66,7 @@ export default function HandoverDetailPage() {
   const { data: handover, isLoading } = useHandover(id);
   const deleteHandover = useDeleteHandover();
   const [confirmDelete, setConfirmDelete] = React.useState(false);
+  const [exporting, setExporting] = React.useState(false);
 
   if (isLoading || !handover) {
     return (
@@ -96,6 +98,26 @@ export default function HandoverDetailPage() {
         title={`Handover: ${handover.task_title}`}
         description="A request to transfer this task to a teammate."
       >
+        <Button
+          variant="outline"
+          disabled={exporting}
+          onClick={async () => {
+            setExporting(true);
+            try {
+              await downloadFile(
+                API_ROUTES.handovers.export(handover.id),
+                "handover.pdf"
+              );
+            } catch {
+              toast.error("Export failed");
+            } finally {
+              setExporting(false);
+            }
+          }}
+        >
+          <FileDown className="size-4" />
+          {exporting ? "Exporting…" : "Export PDF"}
+        </Button>
         {isPending && (isSubmitter || canReview) ? (
           <Button variant="outline" onClick={() => setConfirmDelete(true)}>
             <Trash2 className="size-4" />

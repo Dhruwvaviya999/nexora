@@ -3,11 +3,15 @@ import { API_ROUTES } from "@/lib/constants";
 import type { Paginated } from "@/types";
 import type { Activity } from "@/types/activity";
 
-type ActivityParams = {
+export type ActivityParams = {
   workspace?: string;
   action?: string;
+  actor?: string;
+  date_from?: string;
+  date_to?: string;
   target_type?: string;
   target_id?: string;
+  page?: number;
 };
 
 export const activitiesApi = {

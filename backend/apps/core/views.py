@@ -1,6 +1,9 @@
 """Core API views: service-level endpoints not tied to a domain model."""
 
+import datetime
+
 from django.db import connection
+from django.db.models import Avg, Count, F
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiParameter, extend_schema
@@ -11,7 +14,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.core.serializers import DashboardSerializer
+from apps.core.serializers import AnalyticsSerializer, DashboardSerializer
 from apps.documents.models import Document
 from apps.documents.serializers import DocumentSerializer
 from apps.handovers.models import Handover, HandoverStatus
@@ -149,3 +152,123 @@ class DashboardView(APIView):
             ).data,
         }
         return Response(payload)
+
+
+def _workspace_or_404(request: Request) -> Workspace:
+    workspace_id = request.query_params.get("workspace")
+    if not workspace_id:
+        raise ValidationError({"workspace": "This query parameter is required."})
+    return get_object_or_404(
+        Workspace.objects.filter(members__user=request.user).distinct(),
+        pk=workspace_id,
+    )
+
+
+@extend_schema(tags=["analytics"])
+class AnalyticsView(APIView):
+    """GET /analytics/?workspace=<id> — chart-ready aggregates for a workspace.
+
+    Weekly series covers the last 8 ISO weeks. "Completed" per week counts
+    tasks whose status is completed by their last update in that week (the
+    model has no dedicated completed_at column).
+    """
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = AnalyticsSerializer
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="workspace",
+                type=str,
+                required=True,
+                description="Workspace id to report on.",
+            )
+        ],
+        responses=AnalyticsSerializer,
+    )
+    def get(self, request: Request) -> Response:
+        workspace = _workspace_or_404(request)
+        tasks = Task.objects.filter(workspace=workspace)
+        handovers = Handover.objects.filter(workspace=workspace)
+
+        task_status = [
+            {"status": row["status"], "count": row["count"]}
+            for row in tasks.values("status").annotate(count=Count("id"))
+        ]
+        task_priority = [
+            {"priority": row["priority"], "count": row["count"]}
+            for row in tasks.values("priority").annotate(count=Count("id"))
+        ]
+
+        # Last 8 ISO weeks (Monday starts), oldest first.
+        today = timezone.now().date()
+        this_monday = today - datetime.timedelta(days=today.weekday())
+        week_starts = [this_monday - datetime.timedelta(weeks=i) for i in range(7, -1, -1)]
+        window_start = week_starts[0]
+
+        def _bucket(dates):
+            counts = {ws: 0 for ws in week_starts}
+            for d in dates:
+                monday = d - datetime.timedelta(days=d.weekday())
+                if monday in counts:
+                    counts[monday] += 1
+            return counts
+
+        created_counts = _bucket(
+            t.date()
+            for t in tasks.filter(created_at__date__gte=window_start).values_list(
+                "created_at", flat=True
+            )
+        )
+        completed_counts = _bucket(
+            t.date()
+            for t in tasks.filter(
+                status=TaskStatus.COMPLETED, updated_at__date__gte=window_start
+            ).values_list("updated_at", flat=True)
+        )
+        weekly = [
+            {
+                "week_start": ws.isoformat(),
+                "created": created_counts[ws],
+                "completed": completed_counts[ws],
+            }
+            for ws in week_starts
+        ]
+
+        workload = [
+            {
+                "user_id": str(row["assignee_id"]),
+                "name": row["assignee__name"] or row["assignee__email"],
+                "count": row["count"],
+            }
+            for row in tasks.filter(
+                assignee__isnull=False, status__in=OPEN_TASK_STATUSES
+            )
+            .values("assignee_id", "assignee__name", "assignee__email")
+            .annotate(count=Count("id"))
+            .order_by("-count")[:8]
+        ]
+
+        reviewed = handovers.filter(reviewed_at__isnull=False)
+        avg_review = reviewed.annotate(
+            wait=F("reviewed_at") - F("created_at")
+        ).aggregate(avg=Avg("wait"))["avg"]
+        handover_stats = {
+            "pending": handovers.filter(status=HandoverStatus.PENDING).count(),
+            "approved": handovers.filter(status=HandoverStatus.APPROVED).count(),
+            "rejected": handovers.filter(status=HandoverStatus.REJECTED).count(),
+            "avg_review_hours": (
+                round(avg_review.total_seconds() / 3600, 1) if avg_review else None
+            ),
+        }
+
+        return Response(
+            {
+                "task_status": task_status,
+                "task_priority": task_priority,
+                "weekly": weekly,
+                "workload": workload,
+                "handovers": handover_stats,
+            }
+        )
