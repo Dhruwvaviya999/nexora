@@ -71,7 +71,7 @@ export function TaskForm({
             <FormItem>
               <FormLabel>Title</FormLabel>
               <FormControl>
-                <Input placeholder="Design the homepage" {...field} />
+                <Input placeholder="Design the homepage" maxLength={255} {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -208,6 +208,7 @@ export function TaskForm({
                     type="number"
                     step="0.5"
                     min="0"
+                    max="9999.99"
                     placeholder="e.g. 4"
                     {...field}
                   />
@@ -251,7 +252,7 @@ export function TaskForm({
             <FormItem>
               <FormLabel>Description</FormLabel>
               <FormControl>
-                <Textarea rows={4} placeholder="Details…" {...field} />
+                <Textarea rows={4} maxLength={5000} placeholder="Details…" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>

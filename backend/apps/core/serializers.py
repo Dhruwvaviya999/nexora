@@ -3,6 +3,7 @@
 from rest_framework import serializers
 
 from apps.documents.serializers import DocumentSerializer
+from apps.handovers.serializers import HandoverSerializer
 from apps.projects.serializers import ProjectSerializer
 from apps.tasks.serializers import TaskSerializer
 
@@ -16,6 +17,8 @@ class DashboardStatsSerializer(serializers.Serializer):
     completed_tasks = serializers.IntegerField()
     overdue_tasks = serializers.IntegerField()
     total_documents = serializers.IntegerField()
+    my_tasks = serializers.IntegerField()
+    pending_handovers = serializers.IntegerField()
 
 
 class DashboardSerializer(serializers.Serializer):
@@ -23,3 +26,4 @@ class DashboardSerializer(serializers.Serializer):
     recent_projects = ProjectSerializer(many=True)
     recent_tasks = TaskSerializer(many=True)
     recent_documents = DocumentSerializer(many=True)
+    pending_handovers = HandoverSerializer(many=True)

@@ -5,6 +5,13 @@ import Link from "next/link";
 import { FileText, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { PageHeader } from "@/components/shared/page-header";
 import { SearchInput } from "@/components/shared/search-input";
 import { TableSkeleton } from "@/components/shared/table-skeleton";
@@ -14,22 +21,32 @@ import { DataPagination } from "@/components/shared/data-pagination";
 import { DocumentsTable } from "@/components/documents/documents-table";
 import { useWorkspaceContext } from "@/providers/workspace-provider";
 import { useDocuments } from "@/hooks/use-documents";
+import { useProjects } from "@/hooks/use-projects";
 import { ROUTES } from "@/lib/constants";
+
+const ALL = "all";
 
 export default function DocumentsPage() {
   const { activeWorkspaceId, isLoading: wsLoading } = useWorkspaceContext();
   const [search, setSearch] = React.useState("");
+  const [project, setProject] = React.useState(ALL);
   const [page, setPage] = React.useState(1);
+
+  const { data: projectsData } = useProjects({
+    workspace: activeWorkspaceId ?? undefined,
+  });
 
   const { data, isLoading } = useDocuments({
     workspace: activeWorkspaceId ?? undefined,
     search: search || undefined,
+    project: project === ALL ? undefined : project,
     page,
   });
 
   if (!wsLoading && !activeWorkspaceId) return <NoWorkspace />;
 
   const documents = data?.results ?? [];
+  const projects = projectsData?.results ?? [];
 
   return (
     <div className="space-y-5">
@@ -42,15 +59,30 @@ export default function DocumentsPage() {
         </Button>
       </PageHeader>
 
-      <SearchInput
-        value={search}
-        onSearch={(v) => {
-          setSearch(v);
-          setPage(1);
-        }}
-        placeholder="Search documents…"
-        className="sm:max-w-xs"
-      />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <SearchInput
+          value={search}
+          onSearch={(v) => {
+            setSearch(v);
+            setPage(1);
+          }}
+          placeholder="Search documents…"
+          className="sm:max-w-xs sm:flex-1"
+        />
+        <Select value={project} onValueChange={(v) => { setProject(v); setPage(1); }}>
+          <SelectTrigger className="sm:w-44">
+            <SelectValue placeholder="Project" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>All projects</SelectItem>
+            {projects.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       {isLoading ? (
         <TableSkeleton columns={4} />

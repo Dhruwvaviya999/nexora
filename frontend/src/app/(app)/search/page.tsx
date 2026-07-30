@@ -2,7 +2,13 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { FileText, FolderKanban, ListTodo, SearchIcon } from "lucide-react";
+import {
+  ArrowLeftRight,
+  FileText,
+  FolderKanban,
+  ListTodo,
+  SearchIcon,
+} from "lucide-react";
 
 import {
   Card,
@@ -20,6 +26,7 @@ import { useWorkspaceContext } from "@/providers/workspace-provider";
 import { useProjects } from "@/hooks/use-projects";
 import { useTasks } from "@/hooks/use-tasks";
 import { useDocuments } from "@/hooks/use-documents";
+import { useHandovers } from "@/hooks/use-handovers";
 import { ROUTES } from "@/lib/constants";
 
 export default function SearchPage() {
@@ -31,18 +38,26 @@ export default function SearchPage() {
   const projects = useProjects({ workspace: enabled ? ws : undefined, search: query });
   const tasks = useTasks({ workspace: enabled ? ws : undefined, search: query });
   const documents = useDocuments({ workspace: enabled ? ws : undefined, search: query });
+  const handovers = useHandovers({ workspace: enabled ? ws : undefined, search: query });
 
   if (!wsLoading && !activeWorkspaceId) return <NoWorkspace />;
 
   const projectResults = projects.data?.results ?? [];
   const taskResults = tasks.data?.results ?? [];
   const documentResults = documents.data?.results ?? [];
+  const handoverResults = handovers.data?.results ?? [];
   const hasResults =
-    projectResults.length || taskResults.length || documentResults.length;
+    projectResults.length ||
+    taskResults.length ||
+    documentResults.length ||
+    handoverResults.length;
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Search" description="Search projects, tasks, and documents." />
+      <PageHeader
+        title="Search"
+        description="Search projects, tasks, documents, and handovers."
+      />
 
       <SearchInput
         value={query}
@@ -56,7 +71,7 @@ export default function SearchPage() {
       ) : !hasResults ? (
         <EmptyState icon={SearchIcon} title="No results" description={`Nothing matched "${query}".`} />
       ) : (
-        <div className="grid gap-4 lg:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Card>
             <CardHeader className="flex-row items-center gap-2">
               <FolderKanban className="size-4 text-muted-foreground" />
@@ -118,6 +133,28 @@ export default function SearchPage() {
               ))}
               {!documentResults.length && (
                 <p className="px-2 text-sm text-muted-foreground">No documents.</p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex-row items-center gap-2">
+              <ArrowLeftRight className="size-4 text-muted-foreground" />
+              <CardTitle className="text-base">Handovers ({handoverResults.length})</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {handoverResults.map((h) => (
+                <Link
+                  key={h.id}
+                  href={ROUTES.handover(h.id)}
+                  className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-accent"
+                >
+                  <span className="truncate text-sm font-medium">{h.task_title}</span>
+                  <StatusBadge status={h.status} />
+                </Link>
+              ))}
+              {!handoverResults.length && (
+                <p className="px-2 text-sm text-muted-foreground">No handovers.</p>
               )}
             </CardContent>
           </Card>

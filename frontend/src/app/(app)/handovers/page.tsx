@@ -19,6 +19,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { NoWorkspace } from "@/components/shared/no-workspace";
 import { DataPagination } from "@/components/shared/data-pagination";
 import { HandoversTable } from "@/components/handovers/handovers-table";
+import { useAuth } from "@/providers/auth-provider";
 import { useWorkspaceContext } from "@/providers/workspace-provider";
 import { useHandovers } from "@/hooks/use-handovers";
 import { HANDOVER_STATUSES, ROUTES } from "@/lib/constants";
@@ -26,17 +27,27 @@ import { REVIEWER_ROLES } from "@/types/workspace";
 
 const ALL = "all";
 
+const DIRECTIONS = [
+  { value: ALL, label: "Everyone" },
+  { value: "sent", label: "Sent by me" },
+  { value: "received", label: "Received by me" },
+] as const;
+
 export default function HandoversPage() {
+  const { user } = useAuth();
   const { activeWorkspace, activeWorkspaceId, isLoading: wsLoading } =
     useWorkspaceContext();
   const [search, setSearch] = React.useState("");
   const [status, setStatus] = React.useState(ALL);
+  const [direction, setDirection] = React.useState<string>(ALL);
   const [page, setPage] = React.useState(1);
 
   const { data, isLoading } = useHandovers({
     workspace: activeWorkspaceId ?? undefined,
     search: search || undefined,
     status: status === ALL ? undefined : status,
+    from_user: direction === "sent" ? user?.id : undefined,
+    to_user: direction === "received" ? user?.id : undefined,
     page,
   });
 
@@ -93,6 +104,24 @@ export default function HandoversPage() {
             {HANDOVER_STATUSES.map((s) => (
               <SelectItem key={s.value} value={s.value}>
                 {s.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={direction}
+          onValueChange={(v) => {
+            setDirection(v);
+            setPage(1);
+          }}
+        >
+          <SelectTrigger className="sm:w-44">
+            <SelectValue placeholder="Direction" />
+          </SelectTrigger>
+          <SelectContent>
+            {DIRECTIONS.map((d) => (
+              <SelectItem key={d.value} value={d.value}>
+                {d.label}
               </SelectItem>
             ))}
           </SelectContent>
