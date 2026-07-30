@@ -39,7 +39,7 @@ class InvitationSerializer(serializers.ModelSerializer):
 
     def validate_role(self, value: str) -> str:
         if value not in INVITABLE_ROLES:
-            raise serializers.ValidationError("Members can only be invited as admin or member.")
+            raise serializers.ValidationError("Members can only be invited as admin, manager, or member.")
         return value
 
     def validate(self, attrs):

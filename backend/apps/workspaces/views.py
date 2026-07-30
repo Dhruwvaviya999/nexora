@@ -111,8 +111,8 @@ class WorkspaceViewSet(viewsets.ModelViewSet):
             return Response(status=status.HTTP_204_NO_CONTENT)
 
         new_role = request.data.get("role")
-        if new_role not in (WorkspaceRole.ADMIN, WorkspaceRole.MEMBER):
-            raise ValidationError({"role": "Role must be 'admin' or 'member'."})
+        if new_role not in (WorkspaceRole.ADMIN, WorkspaceRole.MANAGER, WorkspaceRole.MEMBER):
+            raise ValidationError({"role": "Role must be 'admin', 'manager', or 'member'."})
         member.role = new_role
         member.save(update_fields=["role", "updated_at"])
         return Response(WorkspaceMemberSerializer(member).data)
