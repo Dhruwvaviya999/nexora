@@ -14,6 +14,8 @@ from rest_framework.views import APIView
 from apps.core.serializers import DashboardSerializer
 from apps.documents.models import Document
 from apps.documents.serializers import DocumentSerializer
+from apps.handovers.models import Handover, HandoverStatus
+from apps.handovers.serializers import HandoverSerializer
 from apps.projects.models import Project, ProjectStatus
 from apps.projects.serializers import ProjectSerializer
 from apps.tasks.models import Task, TaskStatus
@@ -100,6 +102,7 @@ class DashboardView(APIView):
         projects = Project.objects.filter(workspace=workspace)
         tasks = Task.objects.filter(workspace=workspace)
         documents = Document.objects.filter(workspace=workspace)
+        handovers = Handover.objects.filter(workspace=workspace)
         today = timezone.now().date()
 
         stats = {
@@ -115,6 +118,12 @@ class DashboardView(APIView):
                 due_date__lt=today, status__in=OPEN_TASK_STATUSES
             ).count(),
             "total_documents": documents.count(),
+            "my_tasks": tasks.filter(
+                assignee=request.user, status__in=OPEN_TASK_STATUSES
+            ).count(),
+            "pending_handovers": handovers.filter(
+                status=HandoverStatus.PENDING
+            ).count(),
         }
 
         ctx = {"request": request}
@@ -130,6 +139,13 @@ class DashboardView(APIView):
             ).data,
             "recent_documents": DocumentSerializer(
                 documents.select_related("uploaded_by")[:5], many=True, context=ctx
+            ).data,
+            "pending_handovers": HandoverSerializer(
+                handovers.filter(status=HandoverStatus.PENDING).select_related(
+                    "task", "from_user", "to_user"
+                )[:5],
+                many=True,
+                context=ctx,
             ).data,
         }
         return Response(payload)

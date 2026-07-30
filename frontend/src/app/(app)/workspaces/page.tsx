@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { Loader2, Plus } from "lucide-react";
+import { Building2, Loader2, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/shared/empty-state";
 import { WorkspaceCard } from "@/components/workspaces/workspace-card";
 import { useWorkspaces } from "@/hooks/use-workspaces";
 import { ROUTES } from "@/lib/constants";
@@ -38,14 +39,16 @@ export default function WorkspacesPage() {
           Failed to load workspaces.
         </p>
       ) : workspaces.length === 0 ? (
-        <div className="rounded-lg border border-dashed py-16 text-center">
-          <p className="text-sm text-muted-foreground">
-            You don&apos;t have any workspaces yet.
-          </p>
-          <Button asChild className="mt-4">
-            <Link href={ROUTES.newWorkspace}>Create your first workspace</Link>
-          </Button>
-        </div>
+        <EmptyState
+          icon={Building2}
+          title="No workspaces yet"
+          description="A workspace is where your team's projects, tasks, and documents live."
+          action={
+            <Button asChild>
+              <Link href={ROUTES.newWorkspace}>Create your first workspace</Link>
+            </Button>
+          }
+        />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {workspaces.map((workspace) => (

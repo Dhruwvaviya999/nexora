@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  ArrowLeftRight,
   CheckCircle2,
   Clock,
   FileText,
@@ -9,6 +10,7 @@ import {
   ListTodo,
   Plus,
   TriangleAlert,
+  UserCheck,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -59,7 +61,7 @@ export default function DashboardPage() {
 
       {isLoading || !stats ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, i) => (
+          {Array.from({ length: 10 }).map((_, i) => (
             <Skeleton key={i} className="h-24 rounded-xl" />
           ))}
         </div>
@@ -78,10 +80,21 @@ export default function DashboardPage() {
             icon={TriangleAlert}
             accent={stats.overdue_tasks ? "bg-destructive/15 text-destructive" : undefined}
           />
+          <StatCard label="My open tasks" value={stats.my_tasks} icon={UserCheck} />
+          <StatCard
+            label="Pending handovers"
+            value={stats.pending_handovers}
+            icon={ArrowLeftRight}
+            accent={
+              stats.pending_handovers
+                ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                : undefined
+            }
+          />
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardHeader className="flex-row items-center justify-between">
             <CardTitle className="text-base">Recent projects</CardTitle>
@@ -159,6 +172,36 @@ export default function DashboardPage() {
                     {formatDate(d.created_at)}
                   </span>
                 </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex-row items-center justify-between">
+            <CardTitle className="text-base">Pending handovers</CardTitle>
+            <Link href={ROUTES.handovers} className="text-sm text-muted-foreground hover:text-foreground">
+              View all
+            </Link>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {!data?.pending_handovers.length ? (
+              <EmptyState title="Nothing awaiting review" />
+            ) : (
+              data.pending_handovers.map((h) => (
+                <Link
+                  key={h.id}
+                  href={ROUTES.handover(h.id)}
+                  className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-accent"
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <ArrowLeftRight className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="truncate text-sm font-medium">{h.task_title}</span>
+                  </span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {h.to_user?.name || h.to_user?.email || "—"}
+                  </span>
+                </Link>
               ))
             )}
           </CardContent>

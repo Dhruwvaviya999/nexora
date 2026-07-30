@@ -58,6 +58,7 @@ export function HandoverReviewCard({ handover }: { handover: Handover }) {
           <Textarea
             id="review-comment"
             rows={3}
+            maxLength={5000}
             placeholder="Optional when approving, required when rejecting"
             value={comment}
             onChange={(e) => setComment(e.target.value)}

@@ -61,7 +61,12 @@ export function DocumentUploadForm({
 
       <div className="space-y-2">
         <Label htmlFor="title">Title</Label>
-        <Input id="title" placeholder="Defaults to the filename" {...register("title")} />
+        <Input
+          id="title"
+          placeholder="Defaults to the filename"
+          maxLength={255}
+          {...register("title")}
+        />
       </div>
 
       <div className="space-y-2">
@@ -92,7 +97,12 @@ export function DocumentUploadForm({
 
       <div className="space-y-2">
         <Label htmlFor="description">Description</Label>
-        <Textarea id="description" rows={3} {...register("description")} />
+        <Textarea
+          id="description"
+          rows={3}
+          maxLength={2000}
+          {...register("description")}
+        />
       </div>
 
       <Button type="submit" disabled={isSubmitting}>

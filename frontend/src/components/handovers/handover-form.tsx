@@ -125,6 +125,7 @@ export function HandoverForm({
               <FormControl>
                 <Textarea
                   rows={4}
+                  maxLength={5000}
                   placeholder="What has been done so far?"
                   {...field}
                 />
@@ -143,6 +144,7 @@ export function HandoverForm({
               <FormControl>
                 <Textarea
                   rows={3}
+                  maxLength={5000}
                   placeholder="What still needs to happen?"
                   {...field}
                 />
@@ -161,6 +163,7 @@ export function HandoverForm({
               <FormControl>
                 <Textarea
                   rows={3}
+                  maxLength={5000}
                   placeholder="Links, documents, or context the recipient needs"
                   {...field}
                 />
