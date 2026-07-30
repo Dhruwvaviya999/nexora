@@ -4,6 +4,7 @@ import type { WorkspaceRole } from "@/types/workspace";
 const VARIANT: Record<WorkspaceRole, "default" | "secondary" | "outline"> = {
   owner: "default",
   admin: "secondary",
+  manager: "secondary",
   member: "outline",
 };
 

@@ -108,6 +108,7 @@ export function InviteDialog({ workspaceId }: { workspaceId: string }) {
                     </FormControl>
                     <SelectContent>
                       <SelectItem value="member">Member</SelectItem>
+                      <SelectItem value="manager">Manager</SelectItem>
                       <SelectItem value="admin">Admin</SelectItem>
                     </SelectContent>
                   </Select>

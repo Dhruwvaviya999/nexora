@@ -17,7 +17,12 @@ from apps.common.models import BaseModel
 class WorkspaceRole(models.TextChoices):
     OWNER = "owner", "Owner"
     ADMIN = "admin", "Admin"
+    MANAGER = "manager", "Manager"
     MEMBER = "member", "Member"
+
+
+# Roles allowed to review handovers (and other approval flows).
+REVIEWER_ROLES = (WorkspaceRole.OWNER, WorkspaceRole.ADMIN, WorkspaceRole.MANAGER)
 
 
 class Workspace(BaseModel):

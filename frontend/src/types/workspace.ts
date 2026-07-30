@@ -2,7 +2,14 @@
 
 import type { AuthUser } from "@/types/auth";
 
-export type WorkspaceRole = "owner" | "admin" | "member";
+export type WorkspaceRole = "owner" | "admin" | "manager" | "member";
+
+/** Roles that may review handovers and other approval flows. */
+export const REVIEWER_ROLES: readonly WorkspaceRole[] = [
+  "owner",
+  "admin",
+  "manager",
+];
 
 export interface Workspace {
   id: string;
