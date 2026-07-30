@@ -21,6 +21,7 @@ api_v1_patterns = [
     path("workspaces/", include("apps.workspaces.urls")),
     path("projects/", include("apps.projects.urls")),
     path("tasks/", include("apps.tasks.urls")),
+    path("handovers/", include("apps.handovers.urls")),
     path("documents/", include("apps.documents.urls")),
     path("comments/", include("apps.comments.urls")),
     path("mentions/", include("apps.mentions.urls")),

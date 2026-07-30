@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Loader2, Pencil } from "lucide-react";
+import { ArrowLeftRight, Loader2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -81,6 +81,12 @@ export default function TaskDetailPage() {
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6">
       <PageHeader title={task.title} description={task.description || "No description"}>
+        <Button variant="outline" asChild>
+          <Link href={`${ROUTES.newHandover}?task=${task.id}`}>
+            <ArrowLeftRight className="size-4" />
+            Hand over
+          </Link>
+        </Button>
         <Button variant="outline" asChild>
           <Link href={ROUTES.editTask(task.id)}>
             <Pencil className="size-4" />

@@ -62,6 +62,11 @@ export const API_ROUTES = {
     list: "/tasks/",
     detail: (id: string) => `/tasks/${id}/`,
   },
+  handovers: {
+    list: "/handovers/",
+    detail: (id: string) => `/handovers/${id}/`,
+    review: (id: string) => `/handovers/${id}/review/`,
+  },
   documents: {
     list: "/documents/",
     detail: (id: string) => `/documents/${id}/`,
@@ -98,6 +103,10 @@ export const ROUTES = {
   newTask: "/tasks/new",
   task: (id: string) => `/tasks/${id}`,
   editTask: (id: string) => `/tasks/${id}/edit`,
+  handovers: "/handovers",
+  newHandover: "/handovers/new",
+  handover: (id: string) => `/handovers/${id}`,
+  handoverReviews: "/handovers/reviews",
   documents: "/documents",
   newDocument: "/documents/new",
   document: (id: string) => `/documents/${id}`,
@@ -144,6 +153,12 @@ export const TASK_STATUSES = [
   { value: "review", label: "Review" },
   { value: "completed", label: "Completed" },
   { value: "cancelled", label: "Cancelled" },
+] as const;
+
+export const HANDOVER_STATUSES = [
+  { value: "pending", label: "Pending review" },
+  { value: "approved", label: "Approved" },
+  { value: "rejected", label: "Rejected" },
 ] as const;
 
 export const TASK_PRIORITIES = [

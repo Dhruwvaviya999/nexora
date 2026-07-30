@@ -4,8 +4,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Activity,
+  ArrowLeftRight,
   Bell,
   Bot,
+  ClipboardCheck,
   FileText,
   FolderKanban,
   LayoutDashboard,
@@ -31,17 +33,27 @@ import {
 } from "@/components/ui/sidebar";
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { NavUser } from "@/components/layout/nav-user";
+import { useWorkspaceContext } from "@/providers/workspace-provider";
 import { ROUTES } from "@/lib/constants";
+import { REVIEWER_ROLES } from "@/types/workspace";
 
 const NAV_MAIN = [
   { title: "Dashboard", href: ROUTES.dashboard, icon: LayoutDashboard },
   { title: "Projects", href: ROUTES.projects, icon: FolderKanban },
   { title: "Tasks", href: ROUTES.tasks, icon: ListTodo },
+  { title: "Handovers", href: ROUTES.handovers, icon: ArrowLeftRight },
   { title: "Documents", href: ROUTES.documents, icon: FileText },
   { title: "Activity", href: ROUTES.activity, icon: Activity },
   { title: "Notifications", href: ROUTES.notifications, icon: Bell },
   { title: "Search", href: ROUTES.search, icon: Search },
 ];
+
+// Shown only to roles that can review handovers.
+const NAV_REVIEWS = {
+  title: "Reviews",
+  href: ROUTES.handoverReviews,
+  icon: ClipboardCheck,
+};
 
 const NAV_AI = [
   { title: "AI Assistant", href: ROUTES.ai, icon: Sparkles, exact: true },
@@ -54,11 +66,19 @@ const NAV_FOOTER = [{ title: "Settings", href: ROUTES.settings, icon: Settings }
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const { activeWorkspace } = useWorkspaceContext();
 
-  const isActive = (href: string) =>
-    href === ROUTES.dashboard
-      ? pathname === href
-      : pathname === href || pathname.startsWith(`${href}/`);
+  const canReview =
+    !!activeWorkspace?.role && REVIEWER_ROLES.includes(activeWorkspace.role);
+  const navMain = canReview ? [...NAV_MAIN, NAV_REVIEWS] : NAV_MAIN;
+
+  const isActive = (href: string) => {
+    if (href === ROUTES.dashboard) return pathname === href;
+    // Keep "Handovers" from lighting up while on the "Reviews" sub-page.
+    if (href === ROUTES.handovers && pathname.startsWith(ROUTES.handoverReviews))
+      return false;
+    return pathname === href || pathname.startsWith(`${href}/`);
+  };
 
   return (
     <Sidebar collapsible="icon">
@@ -70,7 +90,7 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupLabel>Platform</SidebarGroupLabel>
           <SidebarMenu>
-            {NAV_MAIN.map((item) => (
+            {navMain.map((item) => (
               <SidebarMenuItem key={item.href}>
                 <SidebarMenuButton
                   asChild
