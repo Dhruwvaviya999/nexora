@@ -12,6 +12,13 @@ import { STORAGE_KEYS } from "@/lib/constants";
  */
 
 const PROTECTED_PREFIXES = ["/dashboard", "/workspaces"];
+
+// Signing in makes these pages pointless, so a session bounces off them.
+//
+// The password-reset pages are deliberately absent: someone already signed in
+// on this browser must still be able to open a reset link from their email and
+// finish setting a new password. Bouncing them to the dashboard would leave
+// them unable to complete a reset they legitimately asked for.
 const AUTH_PAGES = ["/login", "/register"];
 
 export function middleware(request: NextRequest) {

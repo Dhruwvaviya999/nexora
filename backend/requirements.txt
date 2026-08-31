@@ -40,6 +40,26 @@ requests==2.34.2
 cryptography==44.0.0
 
 # ---------------------------------------------------------------------------
+# Background jobs
+# ---------------------------------------------------------------------------
+# Embedding a document takes seconds to minutes (the transformer model alone is
+# ~90MB), far too long to hold an upload request open. Celery moves it to a
+# worker; development and tests run tasks eagerly so no broker is required.
+celery==5.6.3
+redis==8.1.0
+
+# ---------------------------------------------------------------------------
+# Realtime (WebSocket notifications)
+# ---------------------------------------------------------------------------
+# Channels serves the /ws/ routes over ASGI; ordinary HTTP still goes through
+# the normal Django stack. Redis is the cross-process channel layer, so any
+# worker can push to a socket held by any other.
+channels==4.3.2
+channels-redis==4.3.0
+# ASGI server for the websocket-capable deployment (gunicorn -k UvicornWorker).
+uvicorn[standard]==0.52.4
+
+# ---------------------------------------------------------------------------
 # PDF generation (handover export)
 # ---------------------------------------------------------------------------
 reportlab==4.4.10

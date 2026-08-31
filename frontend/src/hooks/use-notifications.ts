@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { notificationsApi } from "@/lib/api/notifications";
+import { useNotificationSocket } from "@/hooks/use-notification-socket";
 
 const KEYS = {
   list: (params?: unknown) => ["notifications", "list", params] as const,
@@ -20,11 +21,20 @@ export function useNotifications(params?: {
   });
 }
 
+/**
+ * Unread badge count.
+ *
+ * Prefers the websocket, which invalidates this query the moment something
+ * arrives. Polling is kept as the fallback and switched off while the socket
+ * is connected, so a live client makes no periodic requests at all.
+ */
 export function useUnreadCount() {
+  const { isLive } = useNotificationSocket();
+
   return useQuery({
     queryKey: KEYS.unread,
     queryFn: () => notificationsApi.unreadCount(),
-    refetchInterval: 30_000,
+    refetchInterval: isLive ? false : 30_000,
   });
 }
 

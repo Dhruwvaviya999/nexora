@@ -27,6 +27,7 @@ from __future__ import annotations
 import datetime
 import mimetypes
 import random
+from contextlib import nullcontext
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -49,6 +50,7 @@ from apps.core import demo_data as D
 from apps.documents.models import Document
 from apps.handovers.models import Handover, HandoverStatus
 from apps.invitations.models import Invitation, InvitationStatus
+from apps.knowledge.handlers import ingestion_disabled
 from apps.knowledge.models import DocumentChunk, EmbeddingJob, EmbeddingStatus
 from apps.knowledge.services.chunker import chunk_text
 from apps.mentions.services import sync_comment_mentions
@@ -115,18 +117,17 @@ class Command(BaseCommand):
         self.rng = random.Random(options["seed"])
         self.now = timezone.now()
         self.password = options["password"]
-        if options["skip_embedding"]:
-            # Detach the ingestion signal (apps.knowledge.handlers) for the run.
-            from django.db.models.signals import post_save
-
-            post_save.disconnect(
-                sender=Document, dispatch_uid="knowledge_document_created"
-            )
         # object pk (str) -> creation time, used to backdate the activity log.
         self.times: dict[str, datetime.datetime] = {}
         self.workspaces: list[Workspace] = []
 
-        with transaction.atomic():
+        # Detaching the ingestion signal has to be scoped: leaving it
+        # disconnected would stop this process indexing anything afterwards.
+        skip_embedding = (
+            ingestion_disabled() if options["skip_embedding"] else nullcontext()
+        )
+
+        with skip_embedding, transaction.atomic():
             if options["reset"]:
                 self._reset()
 

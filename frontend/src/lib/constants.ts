@@ -23,6 +23,8 @@ export const API_ROUTES = {
     refresh: "/auth/refresh/",
     logout: "/auth/logout/",
     me: "/auth/me/",
+    passwordReset: "/auth/password-reset/",
+    passwordResetConfirm: "/auth/password-reset/confirm/",
   },
   workspaces: {
     list: "/workspaces/",
@@ -94,6 +96,8 @@ export const ROUTES = {
   home: "/",
   login: "/login",
   register: "/register",
+  forgotPassword: "/forgot-password",
+  resetPassword: "/reset-password",
   dashboard: "/dashboard",
   analytics: "/analytics",
   workspaces: "/workspaces",

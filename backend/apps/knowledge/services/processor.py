@@ -4,9 +4,10 @@ Document processor — orchestrates the ingestion half of the RAG pipeline:
     extract text -> chunk -> embed -> store DocumentChunk rows
 
 ``enqueue_document`` is the single entry point used by the upload signal and the
-``reindex`` action. Today it runs the work inline (synchronously) because the
-project has no Celery/Redis yet; the indirection means swapping in a task queue
-later is a one-function change with no callers affected.
+``reindex`` action. It records the job and hands the work to a Celery worker, so
+an upload returns as soon as the file is stored rather than waiting on the
+embedding model. With CELERY_TASK_ALWAYS_EAGER (development, tests) the same
+call runs inline instead, which keeps local setup down to Postgres alone.
 """
 
 from __future__ import annotations
@@ -25,17 +26,35 @@ logger = logging.getLogger(__name__)
 
 
 def enqueue_document(document) -> EmbeddingJob:
-    """Schedule (re)processing of ``document``.
+    """Schedule (re)processing of ``document`` on a worker.
 
-    Interim implementation: creates the job row and runs it inline. Replace the
-    body with a Celery ``.delay`` call in Phase 6 — callers stay the same.
+    Returns the pending EmbeddingJob immediately; callers poll its status
+    through the document's ``embedding_status`` field.
     """
     job = EmbeddingJob.objects.create(
         workspace=document.workspace,
         document=document,
         status=EmbeddingStatus.PENDING,
     )
-    process_document(document, job=job)
+
+    document_id, job_id = str(document.pk), str(job.pk)
+
+    def dispatch():
+        # Imported here to avoid a circular import: tasks -> processor -> tasks.
+        from apps.knowledge.tasks import process_document_task
+
+        try:
+            process_document_task.delay(document_id, job_id)
+        except Exception:  # noqa: BLE001 -- broker down: better slow than lost
+            logger.exception(
+                "Could not queue embedding for document %s; running inline",
+                document_id,
+            )
+            process_document(document, job=job)
+
+    # Queued after commit so the worker cannot read the document row before it
+    # exists -- the upload is still inside its transaction at this point.
+    transaction.on_commit(dispatch)
     return job
 
 

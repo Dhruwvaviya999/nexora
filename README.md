@@ -19,12 +19,13 @@ knowledge) — built with **Django REST Framework** and **Next.js**.
   (colors validated for color-vision deficiency in light *and* dark mode).
 - **Audit log** — an append-only activity trail with action / member / date
   filters and one-click **CSV export**.
-- **Collaboration** — threaded comments with @mentions, in-app notifications,
-  and a live activity feed on every detail page.
+- **Collaboration** — threaded comments with @mentions, notifications pushed
+  live over WebSockets, and an activity feed on every detail page.
 - **AI assistant (RAG)** — semantic search and chat over workspace documents
   using pgvector embeddings; pluggable providers (Gemini / OpenAI / Ollama).
-- **Auth** — email-based JWT auth with transparent refresh, route protection in
-  Next.js middleware, and workspace-scoped permissions on every endpoint.
+- **Auth** — email-based JWT auth with transparent refresh, self-service
+  password reset by email, route protection in Next.js middleware, rate-limited
+  credential endpoints, and workspace-scoped permissions on every endpoint.
 
 ## Screenshots
 
@@ -58,16 +59,28 @@ flowchart LR
         AI["ai + knowledge<br/>RAG, embeddings"]
     end
 
+    subgraph Workers["Celery"]
+        EMB["embedding jobs"]
+        MAIL["outgoing email"]
+    end
+
     subgraph Data["PostgreSQL"]
         PG[("relational data")]
         VEC[("pgvector<br/>embeddings")]
     end
 
+    REDIS[("Redis<br/>broker · channel layer · throttle counters")]
     LLM["LLM providers<br/>Gemini / OpenAI / Ollama"]
+    SMTP["SMTP"]
 
     RQ -- "JSON + JWT" --> API
+    RQ -- "WebSocket<br/>live notifications" --> API
     MW -.-> AUTH
     API --> PG
+    API --> REDIS
+    REDIS --> Workers
+    EMB --> VEC
+    MAIL --> SMTP
     AI --> VEC
     AI --> LLM
 ```
@@ -93,8 +106,12 @@ Zod schemas in `src/lib/validations/*` mirror backend constraints.
 | Frontend | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4, shadcn/ui, TanStack Query 5, react-hook-form + zod |
 | Backend | Django 5.1, Django REST Framework, SimpleJWT, django-filter, drf-spectacular (OpenAPI) |
 | Database | PostgreSQL + pgvector |
+| Realtime | Django Channels (WebSockets) over Redis, with polling fallback |
+| Background jobs | Celery + Redis (document embedding, outgoing email) |
 | AI | sentence-transformers embeddings, Gemini / OpenAI / Ollama chat providers |
 | Exports | reportlab (handover PDF), CSV audit-log export |
+| Tests | Django test runner (backend), Vitest + Testing Library (frontend) |
+| Deployment | Docker + docker compose, GitHub Actions CI |
 
 ## Repository layout
 
@@ -110,10 +127,14 @@ nexora/
 │   │   ├── comments/ mentions/ notifications/ activities/ invitations/
 │   │   ├── knowledge/ ai/   # embeddings, RAG, providers
 │   │   └── core/            # health, dashboard, analytics
-│   └── config/              # settings (base/dev/prod), urls, asgi/wsgi
+│   ├── config/              # settings (base/dev/prod/test), urls, asgi, celery
+│   ├── templates/email/     # invitation + password-reset bodies
+│   └── Dockerfile
+├── docker-compose.yml       # db · redis · web · worker · frontend
+├── .github/workflows/ci.yml
 └── frontend/
     └── src/
-        ├── app/(auth)/      # login, register
+        ├── app/(auth)/      # login, register, forgot/reset password
         ├── app/(app)/       # dashboard, analytics, projects, tasks,
         │                    # handovers, documents, activity, ai, …
         ├── components/      # ui/ (shadcn), charts/, domain components
@@ -123,8 +144,27 @@ nexora/
 
 ## Quickstart
 
+### With Docker (everything, one command)
+
+```bash
+cp .env.docker.example .env    # then set SECRET_KEY
+docker compose up --build
+```
+
+Brings up PostgreSQL (with pgvector), Redis, the API, a Celery worker and the
+frontend; migrations run on start. API at `http://localhost:8000/api/v1`,
+frontend at `http://localhost:3000`. Emails print to the `web` container log
+unless SMTP is configured.
+
+### Without Docker
+
 Prerequisites: Python 3.13+, Node 20+, PostgreSQL 16+ with the pgvector
 extension (`CREATE EXTENSION vector;`).
+
+Redis is **optional locally**. Without it, throttle counters live in local
+memory, websockets use an in-process channel layer, and Celery tasks run inline
+— so the app is fully usable with just PostgreSQL. All three need a real Redis
+as soon as more than one process is serving traffic.
 
 ### Backend
 
@@ -137,7 +177,25 @@ python manage.py migrate
 python manage.py runserver    # http://localhost:8000
 ```
 
+`runserver` is Channels' ASGI version (daphne), so websockets work in
+development without any extra process.
+
 API docs (OpenAPI): `http://localhost:8000/api/docs/` (Swagger) and `/api/redoc/`.
+
+#### Background worker (optional locally)
+
+Document embedding and outgoing email run inline in development. To process
+them out of band, point the app at Redis and start a worker:
+
+```bash
+# in backend/.env
+REDIS_URL=redis://localhost:6379/0
+CELERY_TASK_ALWAYS_EAGER=False
+```
+
+```bash
+celery -A config worker --loglevel=info
+```
 
 ### Demo data
 
@@ -175,23 +233,48 @@ pnpm dev                      # http://localhost:3000
 
 ```bash
 cd backend
-python manage.py test         # 44 tests: API walk, roles, handovers, analytics, seeding
+python manage.py test         # 89 tests
 
 cd ../frontend
-pnpm exec tsc --noEmit        # types
+pnpm typecheck                # tsc --noEmit
 pnpm lint                     # eslint
+pnpm test                     # vitest
 pnpm build                    # production build
 ```
 
-Backend coverage is concentrated in `apps/core/tests_smoke.py` (an end-to-end walk
-across every API area), `apps/workspaces/tests.py` (the role matrix),
-`apps/handovers/tests.py` (the review workflow) and `apps/core/tests_seed_demo.py`.
+`manage.py test` selects `config.settings.test` automatically: no Redis, no
+broker and no SMTP are required, and rate limiting is off so a test that walks
+40 endpoints is not mistaken for an attack.
+
+Backend coverage:
+
+| Module | Covers |
+|---|---|
+| `apps/core/tests_smoke.py` | end-to-end walk across every API area, tenancy isolation, anonymous access |
+| `apps/workspaces/tests.py` | the role matrix — who may administer, transfer and delete |
+| `apps/accounts/tests.py` | password reset (reuse, tampering, enumeration, session revocation) and credential rate limits |
+| `apps/handovers/tests.py` | the handover review workflow |
+| `apps/notifications/tests.py` | websocket auth, per-user isolation, realtime push |
+| `apps/invitations/tests.py` | invitation email delivery and the accept/reject lifecycle |
+| `apps/knowledge/tests.py` | embedding scheduling, retries and failure recording |
+| `apps/activities/tests.py` | the audit trail, including cascade deletes |
+| `apps/core/tests_seed_demo.py` | the demo seeder: idempotency, determinism, scoped reset |
+
+Frontend tests run under Vitest with Testing Library
+(`src/**/*.test.{ts,tsx}`).
+
+### Continuous integration
+
+`.github/workflows/ci.yml` runs the backend suite against PostgreSQL+pgvector
+and Redis, then typechecks, lints, tests and builds the frontend. Pushes to
+`main`/`develop` additionally build both Docker images.
 
 ## API surface (v1)
 
 | Area | Endpoints |
 |---|---|
-| Auth | `POST /auth/register` · `/auth/login` · `/auth/refresh` · `GET /auth/me` |
+| Auth | `POST /auth/register` · `/auth/login` · `/auth/refresh` · `/auth/logout` · `GET`/`PATCH /auth/me` |
+| Password reset | `POST /auth/password-reset/` · `POST /auth/password-reset/confirm/` |
 | Workspaces | `/workspaces/` CRUD · members · `transfer-ownership` |
 | Projects / Tasks / Documents | scoped CRUD with search, filters, ordering |
 | Handovers | CRUD · `POST /handovers/{id}/review/` · `GET /handovers/{id}/export/` (PDF) |
@@ -199,6 +282,7 @@ across every API area), `apps/workspaces/tests.py` (the role matrix),
 | Audit log | `GET /activities/` · `GET /activities/export/` (CSV) |
 | Collaboration | `/comments/` · `/mentions/` · `/notifications/` · `/invitations/` |
 | AI | `/ai/chat/` · `/ai/search/` · `/ai/summarize/` · conversations, templates, settings |
+| Realtime | `WS /ws/notifications/?token=<access>` — push-only notification stream |
 
 ## Roles & permissions
 
@@ -220,3 +304,4 @@ across every API area), `apps/workspaces/tests.py` (the role matrix),
 | 5 | AI knowledge assistant (RAG) · Core workflow: handovers + manager review |
 | 6 | Polish: filters, global search, dashboard, validation, loading/empty states |
 | 7 | Interview value: analytics, PDF export, audit log, this README |
+| 8 | Production readiness: transactional email, password reset, rate limiting, background jobs, realtime notifications, test suites, Docker, CI |

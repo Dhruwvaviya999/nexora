@@ -6,6 +6,10 @@ import sys
 
 def main():
     """Run administrative tasks."""
+    # `manage.py test` gets its own settings: no Redis, no broker, no SMTP and
+    # no rate limiting. Pass --settings explicitly to override this.
+    if len(sys.argv) > 1 and sys.argv[1] == 'test':
+        os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings.test')
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings.development')
     try:
         from django.core.management import execute_from_command_line

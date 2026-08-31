@@ -26,6 +26,7 @@ from apps.ai.models import (
     PromptTemplate,
     SearchHistory,
 )
+from apps.common.throttling import AIRateThrottle
 from apps.ai.permissions import resolve_workspace
 from apps.ai.providers.base import ProviderError
 from apps.ai.serializers import (
@@ -139,6 +140,7 @@ class PromptTemplateViewSet(WorkspaceScopedViewSet):
 @extend_schema(tags=["ai"])
 class ChatView(APIView):
     permission_classes = [IsAuthenticated]
+    throttle_classes = [AIRateThrottle]
 
     @extend_schema(
         request=ChatRequestSerializer,
@@ -233,6 +235,7 @@ class ChatView(APIView):
 @extend_schema(tags=["ai"])
 class SearchView(APIView):
     permission_classes = [IsAuthenticated]
+    throttle_classes = [AIRateThrottle]
 
     @extend_schema(request=SearchRequestSerializer)
     def post(self, request):
@@ -283,6 +286,7 @@ class SearchView(APIView):
 @extend_schema(tags=["ai"])
 class SummarizeView(APIView):
     permission_classes = [IsAuthenticated]
+    throttle_classes = [AIRateThrottle]
 
     @extend_schema(request=SummarizeRequestSerializer)
     def post(self, request):
@@ -308,6 +312,7 @@ class SummarizeView(APIView):
 @extend_schema(tags=["ai"])
 class GenerateTasksView(APIView):
     permission_classes = [IsAuthenticated]
+    throttle_classes = [AIRateThrottle]
 
     @extend_schema(request=GenerateTasksRequestSerializer)
     def post(self, request):

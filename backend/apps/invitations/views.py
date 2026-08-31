@@ -10,6 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.activities.services import log_activity
+from apps.common.email import frontend_url, queue_templated_email
 from apps.invitations.models import (
     Invitation,
     InvitationStatus,
@@ -74,17 +75,42 @@ class InvitationViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("This invitation was sent to a different email.")
 
     def _notify(self, invitation):
-        recipient = User.objects.filter(email__iexact=invitation.email).first()
-        if not recipient:
-            return
+        """Tell the invitee, in the app and by email.
+
+        The email is what reaches someone who has no account yet -- the in-app
+        notification can only be created for a user that already exists.
+        """
         inviter = invitation.invited_by
-        create_notification(
-            recipient=recipient,
-            actor=inviter,
-            workspace=invitation.workspace,
-            type=NotificationType.WORKSPACE_INVITE,
-            title=f"{inviter.name or inviter.email} invited you to {invitation.workspace.name}",
-            link="/invitations",
+        recipient = User.objects.filter(email__iexact=invitation.email).first()
+
+        if recipient is not None:
+            create_notification(
+                recipient=recipient,
+                actor=inviter,
+                workspace=invitation.workspace,
+                type=NotificationType.WORKSPACE_INVITE,
+                title=f"{inviter.name or inviter.email} invited you to {invitation.workspace.name}",
+                link="/invitations",
+            )
+
+        inviter_name = inviter.name or inviter.email
+        role = invitation.get_role_display().lower()
+        queue_templated_email(
+            template="invitation",
+            subject=f"{inviter_name} invited you to {invitation.workspace.name} on Nexora",
+            to=invitation.email,
+            context={
+                "inviter": inviter_name,
+                "workspace": invitation.workspace.name,
+                "role": role,
+                "role_article": "an" if role[:1] in "aeiou" else "a",
+                "email": invitation.email,
+                "is_new_user": recipient is None,
+                "accept_url": frontend_url(f"/invitations?token={invitation.token}"),
+                "invitations_url": frontend_url("/invitations"),
+                "register_url": frontend_url("/register"),
+                "expires_at": invitation.expires_at.strftime("%d %b %Y"),
+            },
         )
 
     # -------------------------------------------------------------------- create

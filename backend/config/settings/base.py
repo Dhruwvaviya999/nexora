@@ -39,6 +39,9 @@ ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 # Applications
 # ---------------------------------------------------------------------------
 DJANGO_APPS = [
+    # daphne must precede django.contrib.staticfiles: it replaces `runserver`
+    # with an ASGI-aware one so websockets work in development too.
+    "daphne",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -48,6 +51,7 @@ DJANGO_APPS = [
 ]
 
 THIRD_PARTY_APPS = [
+    "channels",
     "rest_framework",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
@@ -98,7 +102,8 @@ ROOT_URLCONF = "config.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        # Project-wide templates (email bodies live in templates/email/).
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -173,6 +178,98 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    # --- Rate limiting -----------------------------------------------------
+    # Anonymous traffic is keyed by IP, authenticated traffic by user id. The
+    # scoped rates below protect the endpoints worth attacking; see
+    # apps.common.throttling for the named scopes.
+    "DEFAULT_THROTTLE_CLASSES": (
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ),
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": env("THROTTLE_ANON", default="60/min"),
+        "user": env("THROTTLE_USER", default="1000/hour"),
+        # Credential endpoints: brute-force surface, deliberately tight.
+        "login": env("THROTTLE_LOGIN", default="10/min"),
+        "register": env("THROTTLE_REGISTER", default="5/hour"),
+        # Password reset also *sends mail*, so it is an abuse vector twice over.
+        "password_reset": env("THROTTLE_PASSWORD_RESET", default="5/hour"),
+        # LLM calls cost money per request.
+        "ai": env("THROTTLE_AI", default="30/hour"),
+    },
+}
+
+# ---------------------------------------------------------------------------
+# Caching
+# ---------------------------------------------------------------------------
+# DRF throttling counts requests in the cache. The default per-process
+# LocMemCache would give each gunicorn worker its own private counter, so the
+# effective limit becomes rate x worker_count. Redis makes it shared and real.
+REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": env("CACHE_URL", default=REDIS_URL),
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Email
+# ---------------------------------------------------------------------------
+# Development overrides this with the console backend; production must supply
+# real SMTP credentials. Anything user-facing that leaves the system (invites,
+# password resets) goes through apps.common.email.
+EMAIL_BACKEND = env(
+    "EMAIL_BACKEND", default="django.core.mail.backends.smtp.EmailBackend"
+)
+EMAIL_HOST = env("EMAIL_HOST", default="")
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=10)
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="Nexora <no-reply@nexora.app>")
+
+# Public base URL of the Next.js app. Every link in an outgoing email is built
+# from this, so it must be the address recipients can actually reach.
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:3000").rstrip("/")
+
+# How long a password-reset link stays valid.
+PASSWORD_RESET_TIMEOUT = env.int("PASSWORD_RESET_TIMEOUT", default=60 * 60 * 24)
+
+# ---------------------------------------------------------------------------
+# Celery (background jobs)
+# ---------------------------------------------------------------------------
+CELERY_BROKER_URL = env("CELERY_BROKER_URL", default=REDIS_URL)
+CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default=REDIS_URL)
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = "UTC"
+# Fail loudly rather than hanging a web request when the broker is unreachable.
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_BROKER_TRANSPORT_OPTIONS = {"max_retries": 3}
+# One task at a time per worker process: embedding is CPU-bound and holds a
+# multi-hundred-megabyte model in memory.
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_TASK_ACKS_LATE = True
+# Embedding a large PDF is slow, but not unbounded.
+CELERY_TASK_SOFT_TIME_LIMIT = env.int("CELERY_TASK_SOFT_TIME_LIMIT", default=600)
+CELERY_TASK_TIME_LIMIT = env.int("CELERY_TASK_TIME_LIMIT", default=660)
+# Run inline when no worker is available (development, tests, CI).
+CELERY_TASK_ALWAYS_EAGER = env.bool("CELERY_TASK_ALWAYS_EAGER", default=False)
+CELERY_TASK_EAGER_PROPAGATES = False
+
+# ---------------------------------------------------------------------------
+# Channels (realtime)
+# ---------------------------------------------------------------------------
+# ASGI_APPLICATION is set above, next to WSGI_APPLICATION.
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {"hosts": [env("CHANNEL_LAYER_URL", default=REDIS_URL)]},
+    }
 }
 
 # ---------------------------------------------------------------------------

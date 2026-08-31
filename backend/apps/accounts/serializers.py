@@ -1,7 +1,11 @@
-"""Serializers for registration, the current user, and profile updates."""
+"""Serializers for registration, the current user, profile updates and password reset."""
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth.tokens import default_token_generator
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.utils.encoding import force_bytes, force_str
+from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
@@ -85,3 +89,74 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
         data = super().validate(attrs)
         data["user"] = UserSerializer(self.user).data
         return data
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    """Email address to send a reset link to."""
+
+    email = serializers.EmailField()
+
+    def validate_email(self, value: str) -> str:
+        return value.lower().strip()
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    """A reset link's ``uid``/``token`` plus the new password.
+
+    Validating the token here (rather than in the view) means an invalid link
+    and a mismatched password are both reported the same way, as field errors.
+    """
+
+    uid = serializers.CharField()
+    token = serializers.CharField()
+    password = serializers.CharField(
+        write_only=True, style={"input_type": "password"}, validators=[validate_password]
+    )
+    password_confirm = serializers.CharField(
+        write_only=True, style={"input_type": "password"}
+    )
+
+    default_error_messages = {
+        "invalid_link": "This password reset link is invalid or has expired.",
+    }
+
+    def validate(self, attrs):
+        if attrs["password"] != attrs["password_confirm"]:
+            raise serializers.ValidationError(
+                {"password_confirm": "Passwords do not match."}
+            )
+
+        try:
+            user_id = force_str(urlsafe_base64_decode(attrs["uid"]))
+            user = User.objects.get(pk=user_id)
+        except (
+            TypeError,
+            ValueError,
+            OverflowError,
+            User.DoesNotExist,
+            # The primary key is a UUID, so a malformed uid fails in the query
+            # itself rather than simply matching nothing.
+            DjangoValidationError,
+        ):
+            self.fail("invalid_link")
+
+        if not default_token_generator.check_token(user, attrs["token"]):
+            self.fail("invalid_link")
+
+        attrs["user"] = user
+        return attrs
+
+    def save(self, **kwargs):
+        user = self.validated_data["user"]
+        user.set_password(self.validated_data["password"])
+        user.save(update_fields=["password"])
+        return user
+
+
+def build_reset_credentials(user) -> tuple[str, str]:
+    """Return the ``(uid, token)`` pair that identifies a reset link.
+
+    The token is derived from the user's password hash and last-login time, so
+    it stops working the moment the password changes or the link is used.
+    """
+    return urlsafe_base64_encode(force_bytes(user.pk)), default_token_generator.make_token(user)

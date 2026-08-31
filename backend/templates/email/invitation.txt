@@ -1,0 +1,17 @@
+{{ inviter }} invited you to join the "{{ workspace }}" workspace on Nexora as {{ role_article }} {{ role }}.
+
+Open this link to accept:
+
+{{ accept_url }}
+
+{% if is_new_user %}You don't have a Nexora account yet. Create one with this email address ({{ email }}) and the invitation will be waiting for you.
+
+{{ register_url }}
+{% else %}You can also review it from your invitations page:
+
+{{ invitations_url }}
+{% endif %}
+This invitation expires on {{ expires_at }}. If you weren't expecting it, you can ignore this message.
+
+--
+Nexora

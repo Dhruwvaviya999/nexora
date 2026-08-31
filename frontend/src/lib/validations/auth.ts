@@ -33,3 +33,33 @@ export const profileSchema = z.object({
 });
 
 export type ProfileValues = z.infer<typeof profileSchema>;
+
+/** "Email me a reset link" form. */
+export const forgotPasswordSchema = z.object({
+  email: z.string().min(1, "Email is required").email("Enter a valid email"),
+});
+
+export type ForgotPasswordValues = z.infer<typeof forgotPasswordSchema>;
+
+/**
+ * Choosing a new password from a reset link.
+ *
+ * `uid` and `token` come from the link's query string, not from the user, so
+ * they are carried through the form rather than typed into it.
+ */
+export const resetPasswordSchema = z
+  .object({
+    uid: z.string().min(1),
+    token: z.string().min(1),
+    password: z
+      .string()
+      .min(8, "Password must be at least 8 characters")
+      .max(128, "Password is too long"),
+    password_confirm: z.string().min(1, "Please confirm your password"),
+  })
+  .refine((data) => data.password === data.password_confirm, {
+    message: "Passwords do not match",
+    path: ["password_confirm"],
+  });
+
+export type ResetPasswordValues = z.infer<typeof resetPasswordSchema>;
