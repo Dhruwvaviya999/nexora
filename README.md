@@ -139,21 +139,53 @@ python manage.py runserver    # http://localhost:8000
 
 API docs (OpenAPI): `http://localhost:8000/api/docs/` (Swagger) and `/api/redoc/`.
 
+### Demo data
+
+```bash
+cd backend
+python manage.py seed_demo --owner-email you@example.com   # your login owns the data
+python manage.py seed_demo --reset --owner-email you@example.com   # re-seed from scratch
+```
+
+Creates three workspaces (*Aurora Labs*, *Northwind Ops*, *Client Portal*) with
+eleven teammates, twelve projects, ~60 tasks, documents with real embedded
+content, handovers in every review state, threaded comments with @mentions,
+notifications, invitations, an eight-week activity trail and AI conversations,
+prompt templates and search history. Enum-backed fields are covered
+exhaustively — every task status × priority pair, every project/handover/
+invitation state — so filters and charts all have data. Timestamps are
+backdated across eight weeks so the analytics series, overdue counters and
+audit-log date filters are meaningful.
+
+`--reset` only removes the seeded workspaces and the `@nexora.demo` accounts;
+real accounts and their data are untouched. Add `--skip-embedding` to skip the
+(slow) local embedding pass — AI semantic search then returns nothing. Seeded
+accounts share the password `Demo@12345`.
+
 ### Frontend
 
 ```bash
 cd frontend
-npm install
+pnpm install                  # the lockfile is pnpm's; npm/yarn will not match it
 cp .env.example .env.local    # NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
-npm run dev                   # http://localhost:3000
+pnpm dev                      # http://localhost:3000
 ```
 
 ### Tests
 
 ```bash
 cd backend
-python manage.py test         # handover workflow API tests live in apps/handovers/tests.py
+python manage.py test         # 44 tests: API walk, roles, handovers, analytics, seeding
+
+cd ../frontend
+pnpm exec tsc --noEmit        # types
+pnpm lint                     # eslint
+pnpm build                    # production build
 ```
+
+Backend coverage is concentrated in `apps/core/tests_smoke.py` (an end-to-end walk
+across every API area), `apps/workspaces/tests.py` (the role matrix),
+`apps/handovers/tests.py` (the review workflow) and `apps/core/tests_seed_demo.py`.
 
 ## API surface (v1)
 

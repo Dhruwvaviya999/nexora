@@ -23,13 +23,6 @@ import { useWorkspaceContext } from "@/providers/workspace-provider";
 import { useAnalytics } from "@/hooks/use-analytics";
 import { TASK_PRIORITIES, TASK_STATUSES } from "@/lib/constants";
 
-function labelFor(
-  options: readonly { value: string; label: string }[],
-  value: string
-): string {
-  return options.find((o) => o.value === value)?.label ?? value;
-}
-
 export default function AnalyticsPage() {
   const { activeWorkspace, activeWorkspaceId, isLoading: wsLoading } =
     useWorkspaceContext();

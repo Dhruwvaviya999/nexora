@@ -6,9 +6,13 @@ Connections use ``weak=False`` because the handler closures aren't referenced
 anywhere else and would otherwise be garbage-collected.
 """
 
-from django.db.models.signals import post_delete, post_save
+from django.db.models.signals import post_delete, post_save, pre_delete
 
-from apps.activities.services import log_activity
+from apps.activities.services import (
+    log_activity,
+    resume_activity_for_workspace,
+    suppress_activity_for_workspace,
+)
 from apps.comments.models import Comment
 from apps.documents.models import Document
 from apps.handovers.models import Handover
@@ -74,6 +78,16 @@ def _on_workspace_save(sender, instance, created, **kwargs):
     )
 
 
+def _on_workspace_pre_delete(sender, instance, **kwargs):
+    """Mute the audit trail for the duration of a workspace cascade delete."""
+    suppress_activity_for_workspace(instance.pk)
+
+
+def _on_workspace_post_delete(sender, instance, **kwargs):
+    """The workspace row is gone; stop muting so the set doesn't grow forever."""
+    resume_activity_for_workspace(instance.pk)
+
+
 def _on_member_joined(sender, instance, created, **kwargs):
     if not created:
         return
@@ -96,5 +110,7 @@ def _on_member_removed(sender, instance, **kwargs):
 
 post_save.connect(_on_comment_created, sender=Comment, weak=False, dispatch_uid="activity_comment_created")
 post_save.connect(_on_workspace_save, sender=Workspace, weak=False, dispatch_uid="activity_workspace_save")
+pre_delete.connect(_on_workspace_pre_delete, sender=Workspace, weak=False, dispatch_uid="activity_workspace_pre_delete")
+post_delete.connect(_on_workspace_post_delete, sender=Workspace, weak=False, dispatch_uid="activity_workspace_post_delete")
 post_save.connect(_on_member_joined, sender=WorkspaceMember, weak=False, dispatch_uid="activity_member_joined")
 post_delete.connect(_on_member_removed, sender=WorkspaceMember, weak=False, dispatch_uid="activity_member_removed")

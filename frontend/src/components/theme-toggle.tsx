@@ -9,9 +9,14 @@ import { Button } from "@/components/ui/button";
 /** Minimal light/dark toggle. Renders a stable placeholder until mounted to avoid hydration mismatch. */
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
-  const [mounted, setMounted] = React.useState(false);
 
-  React.useEffect(() => setMounted(true), []);
+  // False while server-rendering and during hydration, true afterwards, without
+  // the extra render an effect-driven `setMounted(true)` would cost.
+  const mounted = React.useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
 
   const isDark = resolvedTheme === "dark";
 

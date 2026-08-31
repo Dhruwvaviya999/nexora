@@ -18,16 +18,31 @@ export function SearchInput({
   className?: string;
 }) {
   const [text, setText] = React.useState(value);
-  const onSearchRef = React.useRef(onSearch);
-  onSearchRef.current = onSearch;
 
-  // Keep local state in sync when the value is reset externally.
-  React.useEffect(() => setText(value), [value]);
+  // Latest callback, so the debounce timer never closes over a stale one.
+  // Assigned in an effect rather than during render, which would be a side
+  // effect in the render phase.
+  const onSearchRef = React.useRef(onSearch);
+  React.useEffect(() => {
+    onSearchRef.current = onSearch;
+  });
+
+  // Adopt the value when it is reset externally (a "clear filters" button, say).
+  // Adjusting state during render is the supported pattern here; doing it in an
+  // effect would render the stale text once first.
+  const [syncedValue, setSyncedValue] = React.useState(value);
+  if (value !== syncedValue) {
+    setSyncedValue(value);
+    setText(value);
+  }
 
   React.useEffect(() => {
+    // Already in step with the parent -- on mount, or just after an external
+    // reset. Firing would issue a redundant search for what is already shown.
+    if (text === value) return;
     const id = setTimeout(() => onSearchRef.current(text), 300);
     return () => clearTimeout(id);
-  }, [text]);
+  }, [text, value]);
 
   return (
     <div className={className}>
