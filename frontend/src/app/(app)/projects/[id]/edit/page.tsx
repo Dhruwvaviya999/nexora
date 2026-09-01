@@ -17,6 +17,7 @@ import { getErrorMessage } from "@/lib/api/errors";
 import { ROUTES } from "@/lib/constants";
 import type { ProjectValues } from "@/lib/validations/project";
 
+import { PageContainer } from "@/components/layout/page-container";
 export default function EditProjectPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -42,7 +43,7 @@ export default function EditProjectPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-5">
+    <PageContainer size="sm" className="space-y-5">
       <PageHeader title="Edit project" />
       <Card>
         <CardHeader>
@@ -61,6 +62,6 @@ export default function EditProjectPage() {
           />
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }

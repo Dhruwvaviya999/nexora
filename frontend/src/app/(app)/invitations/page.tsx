@@ -21,6 +21,7 @@ import {
 } from "@/hooks/use-invitations";
 import { getErrorMessage } from "@/lib/api/errors";
 
+import { PageContainer } from "@/components/layout/page-container";
 export default function InvitationsPage() {
   const { data, isLoading } = useMyInvitations();
   const accept = useAcceptInvitation();
@@ -38,7 +39,7 @@ export default function InvitationsPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-6">
+    <PageContainer size="sm" className="space-y-6">
       <PageHeader
         title="Invitations"
         description="Workspaces you've been invited to join."
@@ -95,6 +96,6 @@ export default function InvitationsPage() {
           ))}
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

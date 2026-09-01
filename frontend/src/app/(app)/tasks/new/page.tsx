@@ -20,6 +20,7 @@ import { getErrorMessage } from "@/lib/api/errors";
 import { ROUTES } from "@/lib/constants";
 import type { TaskValues } from "@/lib/validations/task";
 
+import { PageContainer } from "@/components/layout/page-container";
 function NewTaskInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -39,7 +40,7 @@ function NewTaskInner() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-5">
+    <PageContainer size="sm" className="space-y-5">
       <PageHeader title="New task" description="Add a task to a project." />
       <Card>
         <CardHeader>
@@ -54,7 +55,7 @@ function NewTaskInner() {
           />
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }
 

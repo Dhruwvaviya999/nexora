@@ -20,6 +20,7 @@ import { getErrorMessage } from "@/lib/api/errors";
 import { ROUTES } from "@/lib/constants";
 import type { HandoverValues } from "@/lib/validations/handover";
 
+import { PageContainer } from "@/components/layout/page-container";
 function NewHandoverInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -41,7 +42,7 @@ function NewHandoverInner() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-5">
+    <PageContainer size="sm" className="space-y-5">
       <PageHeader
         title="New handover"
         description="Hand a task over to a teammate. A manager reviews it before the task is reassigned."
@@ -59,7 +60,7 @@ function NewHandoverInner() {
           />
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }
 

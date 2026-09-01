@@ -38,6 +38,7 @@ import { applyFieldErrors, getErrorMessage } from "@/lib/api/errors";
 import { profileSchema, type ProfileValues } from "@/lib/validations/auth";
 import { ROUTES } from "@/lib/constants";
 
+import { PageContainer } from "@/components/layout/page-container";
 export default function SettingsPage() {
   const { user, setUser } = useAuth();
   const { activeWorkspace } = useWorkspaceContext();
@@ -60,7 +61,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-6">
+    <PageContainer size="sm" className="space-y-6">
       <PageHeader title="Settings" description="Manage your profile and preferences." />
 
       <Card>
@@ -145,6 +146,6 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       )}
-    </div>
+    </PageContainer>
   );
 }

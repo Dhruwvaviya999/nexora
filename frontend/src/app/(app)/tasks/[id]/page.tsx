@@ -33,6 +33,7 @@ import { getErrorMessage } from "@/lib/api/errors";
 import { formatDate } from "@/lib/format";
 import { ROUTES, TASK_STATUSES } from "@/lib/constants";
 
+import { PageContainer } from "@/components/layout/page-container";
 function Detail({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
@@ -79,7 +80,7 @@ export default function TaskDetailPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6">
+    <PageContainer size="md" className="space-y-6">
       <PageHeader title={task.title} description={task.description || "No description"}>
         <Button variant="outline" asChild>
           <Link href={`${ROUTES.newHandover}?task=${task.id}`}>
@@ -167,6 +168,6 @@ export default function TaskDetailPage() {
       />
 
       <CollaborationTabs targetType="task" targetId={task.id} />
-    </div>
+    </PageContainer>
   );
 }

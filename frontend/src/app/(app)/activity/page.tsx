@@ -23,6 +23,7 @@ import { downloadFile } from "@/lib/api/download";
 import { ACTIVITY_ACTIONS } from "@/lib/activity";
 import { API_ROUTES } from "@/lib/constants";
 
+import { PageContainer } from "@/components/layout/page-container";
 const ALL = "all";
 
 const RANGES = [
@@ -73,7 +74,7 @@ export default function ActivityPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6">
+    <PageContainer size="md" className="space-y-6">
       <PageHeader
         title="Activity"
         description="The audit log of everything that happened in this workspace."
@@ -131,6 +132,6 @@ export default function ActivityPage() {
         count={data?.count ?? 0}
         onPageChange={setPage}
       />
-    </div>
+    </PageContainer>
   );
 }

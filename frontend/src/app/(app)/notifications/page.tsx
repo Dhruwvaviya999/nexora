@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/shared/page-header";
 import { NotificationList } from "@/components/notifications/notification-list";
+import { PageContainer } from "@/components/layout/page-container";
 import {
   useMarkAllNotificationsRead,
   useNotifications,
@@ -24,7 +25,7 @@ export default function NotificationsPage() {
   const notifications = data?.results ?? [];
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-6">
+    <PageContainer size="sm" className="space-y-6">
       <PageHeader
         title="Notifications"
         description="Mentions, replies and workspace updates."
@@ -50,6 +51,6 @@ export default function NotificationsPage() {
       </Tabs>
 
       <NotificationList notifications={notifications} isLoading={isLoading} />
-    </div>
+    </PageContainer>
   );
 }

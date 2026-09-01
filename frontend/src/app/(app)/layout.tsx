@@ -12,6 +12,11 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppBreadcrumbs } from "@/components/layout/app-breadcrumbs";
+import {
+  DEFAULT_PAGE_WIDTH,
+  PAGE_WIDTHS,
+} from "@/components/layout/page-container";
+import { cn } from "@/lib/utils";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { useAuth } from "@/providers/auth-provider";
 import { WorkspaceProvider } from "@/providers/workspace-provider";
@@ -60,7 +65,17 @@ export default function AppLayout({
               <NotificationBell />
             </div>
           </header>
-          <div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
+          {/*
+            Centred and width-capped so pages don't stretch edge-to-edge when
+            the sidebar collapses. Pages that want to be narrower wrap their
+            content in <PageContainer size="sm">; this is the ceiling.
+          */}
+          <div
+            className={cn(
+              "mx-auto flex w-full flex-1 flex-col gap-4 p-4 md:p-6",
+              PAGE_WIDTHS[DEFAULT_PAGE_WIDTH]
+            )}
+          >
             {children}
           </div>
         </SidebarInset>

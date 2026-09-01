@@ -19,6 +19,7 @@ import { getErrorMessage } from "@/lib/api/errors";
 import { ROUTES } from "@/lib/constants";
 import type { ProjectValues } from "@/lib/validations/project";
 
+import { PageContainer } from "@/components/layout/page-container";
 export default function NewProjectPage() {
   const router = useRouter();
   const { activeWorkspaceId } = useWorkspaceContext();
@@ -40,7 +41,7 @@ export default function NewProjectPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-5">
+    <PageContainer size="sm" className="space-y-5">
       <PageHeader title="New project" description="Create a project in this workspace." />
       <Card>
         <CardHeader>
@@ -51,6 +52,6 @@ export default function NewProjectPage() {
           <ProjectForm submitLabel="Create project" onSubmit={handleSubmit} />
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }

@@ -18,6 +18,7 @@ import { getErrorMessage } from "@/lib/api/errors";
 import { ROUTES } from "@/lib/constants";
 import type { DocumentValues } from "@/lib/validations/document";
 
+import { PageContainer } from "@/components/layout/page-container";
 export default function NewDocumentPage() {
   const router = useRouter();
   const { activeWorkspaceId } = useWorkspaceContext();
@@ -43,7 +44,7 @@ export default function NewDocumentPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-5">
+    <PageContainer size="sm" className="space-y-5">
       <PageHeader title="Upload document" description="Add a file to this workspace." />
       <Card>
         <CardHeader>
@@ -56,6 +57,6 @@ export default function NewDocumentPage() {
           />
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }

@@ -17,6 +17,7 @@ import { useWorkspaceContext } from "@/providers/workspace-provider";
 import { getErrorMessage } from "@/lib/api/errors";
 import type { AISettingsValues } from "@/lib/validations/ai";
 
+import { PageContainer } from "@/components/layout/page-container";
 export default function AISettingsPage() {
   const { activeWorkspace, activeWorkspaceId, isLoading: wsLoading } =
     useWorkspaceContext();
@@ -49,7 +50,7 @@ export default function AISettingsPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-6">
+    <PageContainer size="sm" className="space-y-6">
       <PageHeader
         title="AI settings"
         description="Configure the AI provider, model and behaviour for this workspace."
@@ -80,6 +81,6 @@ export default function AISettingsPage() {
           </CardContent>
         </Card>
       )}
-    </div>
+    </PageContainer>
   );
 }

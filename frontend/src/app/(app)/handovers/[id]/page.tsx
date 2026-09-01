@@ -29,6 +29,7 @@ import { API_ROUTES, ROUTES } from "@/lib/constants";
 import { REVIEWER_ROLES } from "@/types/workspace";
 import type { AuthUser } from "@/types/auth";
 
+import { PageContainer } from "@/components/layout/page-container";
 function UserChip({ user, fallback }: { user: AuthUser | null; fallback: string }) {
   if (!user) return <span className="text-muted-foreground">{fallback}</span>;
   return (
@@ -93,7 +94,7 @@ export default function HandoverDetailPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6">
+    <PageContainer size="md" className="space-y-6">
       <PageHeader
         title={`Handover: ${handover.task_title}`}
         description="A request to transfer this task to a teammate."
@@ -203,6 +204,6 @@ export default function HandoverDetailPage() {
         description="This pending handover will be permanently removed."
         onConfirm={onDelete}
       />
-    </div>
+    </PageContainer>
   );
 }

@@ -18,6 +18,7 @@ import { getErrorMessage } from "@/lib/api/errors";
 import { ROUTES } from "@/lib/constants";
 import type { TaskValues } from "@/lib/validations/task";
 
+import { PageContainer } from "@/components/layout/page-container";
 export default function EditTaskPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -43,7 +44,7 @@ export default function EditTaskPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-5">
+    <PageContainer size="sm" className="space-y-5">
       <PageHeader title="Edit task" />
       <Card>
         <CardHeader>
@@ -69,6 +70,6 @@ export default function EditTaskPage() {
           />
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }

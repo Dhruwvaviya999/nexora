@@ -20,6 +20,7 @@ import { useDocument, useReindexDocument } from "@/hooks/use-documents";
 import { getErrorMessage } from "@/lib/api/errors";
 import { formatBytes, formatDateTime } from "@/lib/format";
 
+import { PageContainer } from "@/components/layout/page-container";
 function Detail({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="space-y-1">
@@ -58,7 +59,7 @@ export default function DocumentDetailPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-6">
+    <PageContainer size="sm" className="space-y-6">
       <PageHeader title={doc.title} description={doc.description || "No description"}>
         {doc.file_url && (
           <Button asChild variant="outline">
@@ -117,6 +118,6 @@ export default function DocumentDetailPage() {
       </div>
 
       <CollaborationTabs targetType="document" targetId={doc.id} />
-    </div>
+    </PageContainer>
   );
 }
