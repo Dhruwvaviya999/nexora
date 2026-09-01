@@ -52,12 +52,13 @@ services:
   web:
     build:
       context: ./backend
+    # Continuation lines stay at the SAME indentation as the first: in a folded
+    # (">") block, a more-indented line keeps its newline instead of folding to
+    # a space, which would hand `sh -c` the arguments as separate commands and
+    # leave uvicorn on its 127.0.0.1 default -- unreachable through the port map.
     command: >
       sh -c "python manage.py migrate --noinput &&
-             uvicorn config.asgi:application
-               --host 0.0.0.0
-               --port 8000
-               --workers 3"
+      uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --workers 3"
     environment: &backend_env
       DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-config.settings.production}
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
@@ -116,11 +117,13 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "celery", "-A", "config", "inspect", "ping", "-d", "celery@$$HOSTNAME"]
+      # CMD-SHELL, not CMD: the exec form does no variable expansion, so
+      # "celery@$HOSTNAME" would be pinged literally and never answer.
+      test: ["CMD-SHELL", "celery -A config inspect ping -d celery@$$(hostname) || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 40s
     restart: unless-stopped
 
   frontend:

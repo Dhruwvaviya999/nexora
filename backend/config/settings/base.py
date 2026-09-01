@@ -114,6 +114,24 @@ TEMPLATES = [
             ],
         },
     },
+    # Plain-text templates: HTML autoescaping must be off.
+    #
+    # With it on, an "&" in a URL renders as "&amp;", so a password-reset link
+    # in a text email arrives carrying a parameter literally named "amp;token"
+    # and the reset silently fails. A dedicated engine fixes that for every text
+    # template at once, instead of each one having to remember
+    # {% autoescape off %}. Selected by name: render_to_string(..., using="text").
+    #
+    # It must come *after* the default engine: django.contrib.admin's system
+    # checks inspect the first DjangoTemplates engine for the auth and messages
+    # context processors, and would fail against this one.
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "NAME": "text",
+        "DIRS": [BASE_DIR / "templates"],
+        "APP_DIRS": True,
+        "OPTIONS": {"autoescape": False},
+    },
 ]
 
 WSGI_APPLICATION = "config.wsgi.application"

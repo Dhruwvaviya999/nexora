@@ -23,6 +23,13 @@ WORKDIR /app
 # Dependencies are copied on their own so an application change does not
 # invalidate the (slow, torch-sized) dependency layer.
 COPY requirements.txt .
+
+# torch comes in as a dependency of sentence-transformers, and PyPI's default
+# wheel bundles the entire CUDA runtime -- gigabytes of GPU libraries that a
+# CPU-only embedding worker never loads. Installing the CPU build first
+# satisfies that dependency, so the requirements install leaves it alone.
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
 RUN apt-get update \
     && apt-get install --no-install-recommends -y build-essential libpq-dev \
     && pip install --no-cache-dir -r requirements.txt \

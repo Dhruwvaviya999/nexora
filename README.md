@@ -147,7 +147,10 @@ nexora/
 ### With Docker (everything, one command)
 
 ```bash
-cp .env.docker.example .env    # then set SECRET_KEY
+cp .env.docker.example .env
+# set SECRET_KEY -- the value must not contain '$', which compose would read
+# as a variable reference and strip:
+python -c "import secrets; print(secrets.token_urlsafe(64))"
 docker compose up --build
 ```
 

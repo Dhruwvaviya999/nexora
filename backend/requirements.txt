@@ -56,7 +56,10 @@ redis==8.1.0
 # worker can push to a socket held by any other.
 channels==4.3.2
 channels-redis==4.3.0
-# ASGI server for the websocket-capable deployment (gunicorn -k UvicornWorker).
+# Listed in INSTALLED_APPS so `runserver` speaks ASGI in development; without
+# it Django refuses to start, so it is a hard dependency, not a dev extra.
+daphne==4.2.3
+# ASGI server for deployment (uvicorn config.asgi:application --workers N).
 uvicorn[standard]==0.52.4
 
 # ---------------------------------------------------------------------------

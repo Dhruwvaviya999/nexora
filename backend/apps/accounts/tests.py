@@ -8,6 +8,8 @@ path -- link reuse, tampering, account enumeration and session revocation.
 
 from __future__ import annotations
 
+import re
+
 from django.contrib.auth import get_user_model
 from django.core import mail
 from django.core.cache import cache
@@ -53,6 +55,36 @@ class PasswordResetTests(APITestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn(self.user.email, mail.outbox[0].to)
         self.assertIn("/reset-password?uid=", mail.outbox[0].body)
+
+    def test_the_emailed_link_is_not_html_escaped(self):
+        """A text email must carry a literal "&", not "&amp;".
+
+        Autoescaping would rename the second query parameter to "amp;token",
+        so every emailed reset link would fail.
+        """
+        self.request_reset(self.user.email)
+
+        body = mail.outbox[0].body
+        self.assertNotIn("&amp;", body)
+        self.assertRegex(body, r"/reset-password\?uid=[^&\s]+&token=\S+")
+
+    def test_the_emailed_link_actually_works(self):
+        """Pull the link out of the email and use it, exactly as a user would."""
+        self.request_reset(self.user.email)
+
+        match = re.search(r"/reset-password\?uid=([^&\s]+)&token=(\S+)", mail.outbox[0].body)
+        self.assertIsNotNone(match, "no usable reset link in the email body")
+        uid, token = match.groups()
+
+        response = self.client.post(
+            CONFIRM,
+            {"uid": uid, "token": token, "password": NEW, "password_confirm": NEW},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password(NEW))
 
     def test_request_for_an_unknown_address_is_indistinguishable(self):
         """The response must not reveal whether an account exists."""

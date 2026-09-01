@@ -46,7 +46,9 @@ def send_templated_email(
         return 0
 
     ctx = {"frontend_url": settings.FRONTEND_URL, **(context or {})}
-    body = render_to_string(f"email/{template}.txt", ctx).strip() + "\n"
+    # The "text" engine has autoescaping off; rendering the plain-text body
+    # through the default engine would turn "&" in a link into "&amp;".
+    body = render_to_string(f"email/{template}.txt", ctx, using="text").strip() + "\n"
 
     message = EmailMultiAlternatives(
         subject=subject,
