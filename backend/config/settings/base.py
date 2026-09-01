@@ -304,7 +304,9 @@ SIMPLE_JWT = {
     "BLACKLIST_AFTER_ROTATION": True,
     "UPDATE_LAST_LOGIN": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
-    # Fall back to SECRET_KEY when JWT_SIGNING_KEY is unset *or* blank.
+    # SimpleJWT calls this SIGNING_KEY; it rejects "SECRET_KEY" outright, which
+    # takes the whole app down at import time.
+    # Falls back to SECRET_KEY when JWT_SIGNING_KEY is unset *or* blank.
     "SIGNING_KEY": env("JWT_SIGNING_KEY", default="") or SECRET_KEY,
 }
 
