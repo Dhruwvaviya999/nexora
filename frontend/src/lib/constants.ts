@@ -142,7 +142,7 @@ export const AI_PROVIDERS = [
 
 /** Suggested default chat models per provider (free-text is also allowed). */
 export const AI_MODELS_BY_PROVIDER: Record<string, string[]> = {
-  gemini: ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"],
+  gemini: ["gemini-3.6-flash"],
   openai: ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini"],
   ollama: ["llama3.1", "llama3.2", "mistral", "qwen2.5"],
 };

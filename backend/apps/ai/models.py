@@ -72,7 +72,7 @@ class AISettings(BaseModel):
     is_enabled = models.BooleanField(default=True)
 
     provider = models.CharField(max_length=32, default="gemini")
-    chat_model = models.CharField(max_length=128, default="gemini-2.0-flash")
+    chat_model = models.CharField(max_length=128, default="gemini-3.6-flash")
     embedding_provider = models.CharField(
         max_length=32, default="sentence_transformer"
     )

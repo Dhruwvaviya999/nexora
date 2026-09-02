@@ -339,7 +339,7 @@ CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
 AI = {
     # --- LLM (chat / summaries / action items) ---
     "DEFAULT_LLM_PROVIDER": env("AI_LLM_PROVIDER", default="gemini"),
-    "DEFAULT_CHAT_MODEL": env("AI_CHAT_MODEL", default="gemini-2.0-flash"),
+    "DEFAULT_CHAT_MODEL": env("AI_CHAT_MODEL", default="gemini-3.6-flash"),
     "DEFAULT_TEMPERATURE": env.float("AI_TEMPERATURE", default=0.2),
     "DEFAULT_MAX_TOKENS": env.int("AI_MAX_TOKENS", default=1024),
     # --- Embeddings (semantic search / retrieval) ---

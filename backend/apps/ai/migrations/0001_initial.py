@@ -57,7 +57,7 @@ class Migration(migrations.Migration):
                 ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
                 ('is_enabled', models.BooleanField(default=True)),
                 ('provider', models.CharField(default='gemini', max_length=32)),
-                ('chat_model', models.CharField(default='gemini-2.0-flash', max_length=128)),
+                ('chat_model', models.CharField(default='gemini-3.6-flash', max_length=128)),
                 ('embedding_provider', models.CharField(default='sentence_transformer', max_length=32)),
                 ('embedding_model', models.CharField(default='all-MiniLM-L6-v2', max_length=128)),
                 ('temperature', models.FloatField(default=0.2)),

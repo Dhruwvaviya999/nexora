@@ -1020,7 +1020,7 @@ class Command(BaseCommand):
             members,
             documents,
             provider="gemini",
-            model="gemini-2.0-flash",
+            model="gemini-3.6-flash",
         )
         self._make_edit_history(workspace, projects, tasks, documents, members)
         self._make_deletion_history(workspace, members)
