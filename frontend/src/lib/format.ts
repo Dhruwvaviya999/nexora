@@ -8,9 +8,36 @@ export function formatBytes(bytes: number): string {
   return `${value.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
+/** Matches a bare calendar date with no time or zone, e.g. `2026-09-14`. */
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Parse a date value into a `Date`. Bare `YYYY-MM-DD` strings are read as local
+ * midnight; `new Date("2026-09-14")` would read them as UTC and land on the
+ * neighbouring day for anyone not on UTC.
+ */
+export function parseDate(value?: string | null): Date | undefined {
+  if (!value) return undefined;
+  if (DATE_ONLY.test(value)) {
+    const [year, month, day] = value.split("-").map(Number);
+    return new Date(year, month - 1, day);
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
+/** Serialize a `Date` to `YYYY-MM-DD` using its local calendar day. */
+export function toDateOnly(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export function formatDate(value?: string | null): string {
-  if (!value) return "—";
-  return new Date(value).toLocaleDateString(undefined, {
+  const date = parseDate(value);
+  if (!date) return "—";
+  return date.toLocaleDateString(undefined, {
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -18,8 +45,9 @@ export function formatDate(value?: string | null): string {
 }
 
 export function formatDateTime(value?: string | null): string {
-  if (!value) return "—";
-  return new Date(value).toLocaleString(undefined, {
+  const date = parseDate(value);
+  if (!date) return "—";
+  return date.toLocaleString(undefined, {
     dateStyle: "medium",
     timeStyle: "short",
   });
@@ -27,8 +55,9 @@ export function formatDateTime(value?: string | null): string {
 
 /** Compact relative time like "just now", "5m", "3h", "2d", else a date. */
 export function formatRelativeTime(value?: string | null): string {
-  if (!value) return "—";
-  const then = new Date(value).getTime();
+  const date = parseDate(value);
+  if (!date) return "—";
+  const then = date.getTime();
   const seconds = Math.round((Date.now() - then) / 1000);
   if (seconds < 45) return "just now";
   const minutes = Math.round(seconds / 60);
@@ -42,9 +71,9 @@ export function formatRelativeTime(value?: string | null): string {
 
 /** True when a date string is strictly before today (used for overdue tasks). */
 export function isPast(value?: string | null): boolean {
-  if (!value) return false;
-  const d = new Date(value);
+  const date = parseDate(value);
+  if (!date) return false;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  return d < today;
+  return date < today;
 }

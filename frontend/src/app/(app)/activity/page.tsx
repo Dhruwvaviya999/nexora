@@ -22,6 +22,7 @@ import { useWorkspaceContext } from "@/providers/workspace-provider";
 import { downloadFile } from "@/lib/api/download";
 import { ACTIVITY_ACTIONS } from "@/lib/activity";
 import { API_ROUTES } from "@/lib/constants";
+import { toDateOnly } from "@/lib/format";
 
 import { PageContainer } from "@/components/layout/page-container";
 const ALL = "all";
@@ -38,7 +39,7 @@ function dateFromForRange(range: string): string | undefined {
   if (!preset?.days) return undefined;
   const from = new Date();
   from.setDate(from.getDate() - preset.days);
-  return from.toISOString().slice(0, 10);
+  return toDateOnly(from);
 }
 
 export default function ActivityPage() {

@@ -10,7 +10,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { formatDate } from "@/lib/format";
+import { formatDate, parseDate, toDateOnly } from "@/lib/format";
 
 /** Date picker built on shadcn Popover + Calendar. Value is an ISO `YYYY-MM-DD` string. */
 export function DatePicker({
@@ -22,7 +22,7 @@ export function DatePicker({
   onChange: (value: string) => void;
   placeholder?: string;
 }) {
-  const selected = value ? new Date(value) : undefined;
+  const selected = parseDate(value);
 
   return (
     <Popover>
@@ -43,9 +43,7 @@ export function DatePicker({
         <Calendar
           mode="single"
           selected={selected}
-          onSelect={(date) =>
-            onChange(date ? date.toISOString().slice(0, 10) : "")
-          }
+          onSelect={(date) => onChange(date ? toDateOnly(date) : "")}
           autoFocus
         />
       </PopoverContent>
