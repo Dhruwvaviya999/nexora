@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
@@ -29,6 +30,50 @@ import { taskSchema, type TaskValues } from "@/lib/validations/task";
 import { TASK_PRIORITIES, TASK_STATUSES } from "@/lib/constants";
 
 const UNASSIGNED = "unassigned";
+
+function parseLabels(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Comma-separated labels editor. Keeps the raw text locally so a trailing comma
+ * or space survives while typing; the form only ever sees the parsed array.
+ */
+function LabelsInput({
+  value,
+  onChange,
+}: {
+  value?: string[] | null;
+  onChange: (labels: string[]) => void;
+}) {
+  const labels = value ?? [];
+  const key = labels.join(",");
+  const [draft, setDraft] = React.useState(() => labels.join(", "));
+  const [syncedKey, setSyncedKey] = React.useState(key);
+
+  // Adjust during render (not in an effect) when the form value changed from the
+  // outside — a reset or defaults arriving. Edits made here already match the
+  // draft, so the raw text is left alone.
+  if (key !== syncedKey) {
+    setSyncedKey(key);
+    if (parseLabels(draft).join(",") !== key) setDraft(labels.join(", "));
+  }
+
+  return (
+    <Input
+      placeholder="design, frontend"
+      value={draft}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        onChange(parseLabels(e.target.value));
+      }}
+      onBlur={() => setDraft(parseLabels(draft).join(", "))}
+    />
+  );
+}
 
 export function TaskForm({
   workspaceId,
@@ -226,17 +271,9 @@ export function TaskForm({
             <FormItem>
               <FormLabel>Labels</FormLabel>
               <FormControl>
-                <Input
-                  placeholder="design, frontend"
-                  value={(field.value ?? []).join(", ")}
-                  onChange={(e) =>
-                    field.onChange(
-                      e.target.value
-                        .split(",")
-                        .map((s) => s.trim())
-                        .filter(Boolean)
-                    )
-                  }
+                <LabelsInput
+                  value={field.value}
+                  onChange={field.onChange}
                 />
               </FormControl>
               <FormDescription>Comma-separated.</FormDescription>

@@ -58,7 +58,9 @@ export function NotificationItem({
         <Icon className="size-4" />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium leading-snug">{notification.title}</p>
+        <p className="line-clamp-2 text-sm font-medium leading-snug break-words">
+          {notification.title}
+        </p>
         {notification.message && (
           <p className="truncate text-xs text-muted-foreground">
             {notification.message}
