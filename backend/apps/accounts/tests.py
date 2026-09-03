@@ -31,6 +31,13 @@ NEW = "Br4nd!NewPassw0rd"
 
 class PasswordResetTests(APITestCase):
     def setUp(self):
+        # The request and confirm endpoints share one IP-keyed throttle bucket
+        # that the cache carries across test methods. Rates are None under the
+        # test settings, but clearing keeps these tests independent of each
+        # other -- and of whichever settings module actually got loaded.
+        cache.clear()
+        self.addCleanup(cache.clear)
+
         self.user = User.objects.create_user(
             email="reset.me@example.com", password=OLD, name="Reset Me"
         )
