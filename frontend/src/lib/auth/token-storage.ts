@@ -3,7 +3,7 @@ import { STORAGE_KEYS } from "@/lib/constants";
 /**
  * Token storage backed by cookies.
  *
- * Cookies (not localStorage) are used so Next.js middleware can read the access
+ * Cookies (not localStorage) are used so the Next.js proxy can read the access
  * token server-side for route protection. They are NOT httpOnly — the backend
  * returns tokens in the JSON body, so the client owns them. Good enough for this
  * foundation; a later phase can move refresh tokens to an httpOnly cookie.

@@ -3,12 +3,12 @@ import { NextResponse, type NextRequest } from "next/server";
 import { STORAGE_KEYS } from "@/lib/constants";
 
 /**
- * Edge route guard.
+ * Route guard, run for every matched request before it reaches a route.
  *
  * Reads the access-token cookie (set client-side after login) to gate routes.
  * It only checks *presence*, not validity — the API client handles expiry via
  * silent refresh, and the protected layout redirects if the session is truly
- * dead. This keeps middleware fast and avoids verifying JWTs at the edge.
+ * dead. This keeps the guard fast and avoids verifying JWTs here.
  */
 
 const PROTECTED_PREFIXES = ["/dashboard", "/workspaces"];
@@ -21,7 +21,7 @@ const PROTECTED_PREFIXES = ["/dashboard", "/workspaces"];
 // them unable to complete a reset they legitimately asked for.
 const AUTH_PAGES = ["/login", "/register"];
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hasToken = Boolean(
     request.cookies.get(STORAGE_KEYS.accessToken)?.value ||
