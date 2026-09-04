@@ -5,11 +5,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import Link from "next/link";
-
-import { Button } from "@/components/ui/button";
+import { HomeCta } from "@/components/layout/home-cta";
 import { SiteHeader } from "@/components/layout/site-header";
-import { APP, ROUTES } from "@/lib/constants";
+import { APP } from "@/lib/constants";
 
 export default function Home() {
   return (
@@ -27,14 +25,7 @@ export default function Home() {
           <p className="mx-auto max-w-xl text-balance text-muted-foreground">
             {APP.description}
           </p>
-          <div className="flex items-center justify-center gap-3 pt-2">
-            <Button asChild>
-              <Link href={ROUTES.register}>Get started</Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link href={ROUTES.login}>Sign in</Link>
-            </Button>
-          </div>
+          <HomeCta />
         </div>
 
         <div className="grid w-full gap-4 sm:grid-cols-3">
