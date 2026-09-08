@@ -1,0 +1,1304 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; font-family: system-ui, sans-serif; font-size: 14px; }
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
+</style>
+<title>Nexora Codebase Walkthrough</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;600&display=swap">
+
+</head>
+<body>
+<style>
+/* ------------------------------------------------------------------
+   Tokens — complete light palette on bare :root, redefined for dark.
+   Lane colours encode layer: pine = Django/API, amber = Next/browser,
+   slate = data stores & workers. Neutrals carry a slight green bias.
+   ------------------------------------------------------------------ */
+:root {
+  --paper:        #f4f5f2;
+  --surface:      #ffffff;
+  --surface-sunk: #eceee9;
+  --ink:          #161c1a;
+  --ink-soft:     #444d49;
+  --ink-faint:    #6d7772;
+  --rule:         #d8dcd6;
+  --rule-soft:    #e5e8e3;
+
+  --api:          #10604f;   /* Django / DRF */
+  --api-bg:       #e2efeb;
+  --web:          #9a5310;   /* Next.js / browser */
+  --web-bg:       #f7ece0;
+  --data:         #2c4d78;   /* Postgres / Redis / Celery */
+  --data-bg:      #e3eaf3;
+  --warn:         #8d3320;
+  --warn-bg:      #f8e6e1;
+
+  --code-bg:      #eef0ec;
+  --code-ink:     #1d2624;
+
+  --shadow: 0 1px 2px rgba(20,28,26,.06), 0 8px 24px -16px rgba(20,28,26,.28);
+  --maxw: 68ch;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper:        #101413;
+    --surface:      #171c1b;
+    --surface-sunk: #1d2322;
+    --ink:          #e7eae7;
+    --ink-soft:     #b3bbb7;
+    --ink-faint:    #838d89;
+    --rule:         #2b3231;
+    --rule-soft:    #232928;
+
+    --api:          #5cc4a8;
+    --api-bg:       #14302a;
+    --web:          #e0a05c;
+    --web-bg:       #33240f;
+    --data:         #8ab2e0;
+    --data-bg:      #17263a;
+    --warn:         #e59078;
+    --warn-bg:      #341c16;
+
+    --code-bg:      #1c2221;
+    --code-ink:     #dfe4e1;
+
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.8);
+  }
+}
+
+:root[data-theme="dark"] {
+  --paper:        #101413;
+  --surface:      #171c1b;
+  --surface-sunk: #1d2322;
+  --ink:          #e7eae7;
+  --ink-soft:     #b3bbb7;
+  --ink-faint:    #838d89;
+  --rule:         #2b3231;
+  --rule-soft:    #232928;
+
+  --api:          #5cc4a8;
+  --api-bg:       #14302a;
+  --web:          #e0a05c;
+  --web-bg:       #33240f;
+  --data:         #8ab2e0;
+  --data-bg:      #17263a;
+  --warn:         #e59078;
+  --warn-bg:      #341c16;
+
+  --code-bg:      #1c2221;
+  --code-ink:     #dfe4e1;
+
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.8);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Source Serif 4", Georgia, "Times New Roman", serif;
+  font-size: 17px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- Shell ---------- */
+.shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 20px 96px;
+}
+@media (min-width: 1000px) {
+  .shell {
+    grid-template-columns: 232px minmax(0, 1fr);
+    gap: 56px;
+    padding: 0 32px 120px;
+  }
+}
+
+/* ---------- Masthead ---------- */
+.masthead {
+  grid-column: 1 / -1;
+  border-bottom: 2px solid var(--ink);
+  padding: 56px 0 22px;
+  margin-bottom: 48px;
+}
+.eyebrow {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin: 0 0 14px;
+}
+h1 {
+  font-family: Archivo, "Helvetica Neue", Arial, sans-serif;
+  font-weight: 700;
+  font-size: clamp(34px, 6vw, 54px);
+  line-height: 1.02;
+  letter-spacing: -.025em;
+  margin: 0 0 16px;
+  text-wrap: balance;
+}
+.standfirst {
+  font-size: 19px;
+  color: var(--ink-soft);
+  max-width: 62ch;
+  margin: 0 0 24px;
+}
+.masthead-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+}
+.chip {
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 3px 9px;
+  color: var(--ink-soft);
+  background: var(--surface);
+}
+.chip.api  { color: var(--api);  border-color: var(--api);  background: var(--api-bg); }
+.chip.web  { color: var(--web);  border-color: var(--web);  background: var(--web-bg); }
+.chip.data { color: var(--data); border-color: var(--data); background: var(--data-bg); }
+
+/* ---------- Contents rail ---------- */
+.rail { display: none; }
+@media (min-width: 1000px) {
+  .rail {
+    display: block;
+    position: sticky;
+    top: 24px;
+    align-self: start;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+    font-family: Archivo, sans-serif;
+    font-size: 13px;
+    line-height: 1.45;
+    padding-bottom: 24px;
+  }
+}
+.rail h2 {
+  font-size: 10.5px;
+  font-family: "JetBrains Mono", monospace;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin: 0 0 12px;
+  font-weight: 400;
+}
+.rail ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.rail a {
+  color: var(--ink-soft);
+  text-decoration: none;
+  display: flex;
+  gap: 9px;
+  border-left: 2px solid transparent;
+  padding-left: 9px;
+}
+.rail a:hover { color: var(--api); border-left-color: var(--api); }
+.rail a:focus-visible { outline: 2px solid var(--api); outline-offset: 2px; }
+.rail .num {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  padding-top: 2px;
+  min-width: 1.4em;
+}
+
+/* ---------- Article ---------- */
+article { min-width: 0; }
+section { margin-bottom: 64px; scroll-margin-top: 20px; }
+section > * { max-width: var(--maxw); }
+section > .wide, section > figure, section > .lanes, section > .steps, section > .grid2 { max-width: none; }
+
+h2 {
+  font-family: Archivo, sans-serif;
+  font-weight: 700;
+  font-size: 27px;
+  letter-spacing: -.018em;
+  line-height: 1.15;
+  margin: 0 0 6px;
+  text-wrap: balance;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+h2 .sec-num {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ink-faint);
+  letter-spacing: 0;
+}
+.dek {
+  color: var(--ink-faint);
+  font-size: 15.5px;
+  margin: 0 0 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--rule);
+  max-width: var(--maxw);
+}
+h3 {
+  font-family: Archivo, sans-serif;
+  font-weight: 600;
+  font-size: 17.5px;
+  letter-spacing: -.006em;
+  margin: 34px 0 8px;
+}
+h4 {
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 600;
+  font-size: 12.5px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin: 26px 0 8px;
+}
+p { margin: 0 0 15px; }
+ul, ol { margin: 0 0 15px; padding-left: 22px; }
+li { margin-bottom: 7px; }
+strong { font-weight: 600; }
+
+code, .mono {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: .855em;
+}
+p code, li code, td code, dd code {
+  background: var(--code-bg);
+  color: var(--code-ink);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+a { color: var(--api); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+
+pre {
+  background: var(--code-bg);
+  color: var(--code-ink);
+  border: 1px solid var(--rule-soft);
+  border-radius: 4px;
+  padding: 16px 18px;
+  overflow-x: auto;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+  margin: 0 0 18px;
+}
+pre .c { color: var(--ink-faint); }
+pre .k { color: var(--api); font-weight: 600; }
+pre .w { color: var(--web); }
+
+/* ---------- Tables ---------- */
+.tablewrap { overflow-x: auto; margin: 0 0 20px; border: 1px solid var(--rule); border-radius: 4px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+thead th {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  font-weight: 400;
+  background: var(--surface-sunk);
+  border-bottom: 1px solid var(--rule);
+  white-space: nowrap;
+}
+tbody tr:last-child td { border-bottom: none; }
+td.path { font-family: "JetBrains Mono", monospace; font-size: 12px; white-space: nowrap; color: var(--ink); }
+td.num, th.num { font-variant-numeric: tabular-nums; }
+.yes { color: var(--api); font-weight: 600; }
+.no  { color: var(--ink-faint); }
+
+/* ---------- Numbered flow steps (only where order is real) ---------- */
+.steps { list-style: none; padding: 0; margin: 0 0 22px; display: flex; flex-direction: column; gap: 0; }
+.steps > li {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 16px;
+  padding: 14px 0;
+  border-top: 1px solid var(--rule-soft);
+  margin: 0;
+}
+.steps > li:first-child { border-top: 1px solid var(--rule); }
+.steps > li:last-child { border-bottom: 1px solid var(--rule); }
+.steps .n {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--ink-faint);
+  padding-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.steps .body { min-width: 0; }
+.steps .body > :last-child { margin-bottom: 0; }
+.steps .where {
+  display: inline-block;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11.5px;
+  padding: 1px 6px;
+  border-radius: 2px;
+  margin-bottom: 5px;
+}
+.where.api  { color: var(--api);  background: var(--api-bg); }
+.where.web  { color: var(--web);  background: var(--web-bg); }
+.where.data { color: var(--data); background: var(--data-bg); }
+
+/* ---------- Layer diagram ---------- */
+.lanes { display: flex; flex-direction: column; gap: 10px; margin: 0 0 24px; }
+.lane {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  align-items: stretch;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--surface);
+  overflow: hidden;
+}
+@media (max-width: 640px) { .lane { grid-template-columns: minmax(0,1fr); } }
+.lane .tag {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  border-right: 1px solid var(--rule);
+}
+@media (max-width: 640px) { .lane .tag { border-right: none; border-bottom: 1px solid var(--rule); } }
+.lane.l-web  .tag { background: var(--web-bg);  color: var(--web); }
+.lane.l-api  .tag { background: var(--api-bg);  color: var(--api); }
+.lane.l-data .tag { background: var(--data-bg); color: var(--data); }
+.lane .cells { display: flex; flex-wrap: wrap; gap: 6px; padding: 11px 14px; align-items: center; }
+.cell {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11.5px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 3px 8px;
+  color: var(--ink-soft);
+  background: var(--surface-sunk);
+}
+.arrow { color: var(--ink-faint); font-size: 13px; padding: 0 1px; }
+
+/* ---------- Callouts ---------- */
+.note {
+  border-left: 3px solid var(--data);
+  background: var(--data-bg);
+  padding: 13px 16px;
+  border-radius: 0 4px 4px 0;
+  font-size: 15px;
+  margin: 0 0 20px;
+  max-width: var(--maxw);
+}
+.note.gotcha { border-left-color: var(--warn); background: var(--warn-bg); }
+.note p:last-child { margin-bottom: 0; }
+.note .label {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 5px;
+  color: var(--data);
+}
+.note.gotcha .label { color: var(--warn); }
+
+/* ---------- Definition rows ---------- */
+dl.files { margin: 0 0 20px; }
+dl.files > div {
+  display: grid;
+  grid-template-columns: minmax(0, 250px) minmax(0, 1fr);
+  gap: 6px 20px;
+  padding: 11px 0;
+  border-top: 1px solid var(--rule-soft);
+}
+@media (max-width: 700px) { dl.files > div { grid-template-columns: minmax(0,1fr); gap: 3px; } }
+dl.files > div:first-child { border-top: 1px solid var(--rule); }
+dl.files > div:last-child { border-bottom: 1px solid var(--rule); }
+dl.files dt {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  color: var(--ink);
+  word-break: break-word;
+}
+dl.files dd { margin: 0; font-size: 15px; color: var(--ink-soft); }
+
+.grid2 { display: grid; gap: 18px; grid-template-columns: minmax(0,1fr); margin: 0 0 20px; }
+@media (min-width: 760px) { .grid2 { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+.panel {
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 16px 18px;
+  background: var(--surface);
+}
+.panel h4 { margin-top: 0; }
+.panel :last-child { margin-bottom: 0; }
+
+footer.end {
+  grid-column: 1 / -1;
+  border-top: 2px solid var(--ink);
+  padding-top: 18px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  letter-spacing: .04em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+</style>
+
+<div class="shell">
+
+  <header class="masthead">
+    <p class="eyebrow">Codebase reference · Django 5 + Next.js 16</p>
+    <h1>Nexora Codebase Walkthrough</h1>
+    <p class="standfirst">
+      Every layer of the repo, what each file is for, and the exact path a request
+      takes from a click in the browser to a row in Postgres and back.
+    </p>
+    <div class="masthead-meta">
+      <span class="chip web">frontend/ · Next.js 16 · React 19</span>
+      <span class="chip api">backend/ · Django 5.1 · DRF</span>
+      <span class="chip data">Postgres + pgvector · Redis · Celery</span>
+      <span class="chip">15 Django apps</span>
+      <span class="chip">~300 source files</span>
+    </div>
+  </header>
+
+  <nav class="rail" aria-label="Contents">
+    <h2>Contents</h2>
+    <ol>
+      <li><a href="#s1"><span class="num">01</span><span>What Nexora is</span></a></li>
+      <li><a href="#s2"><span class="num">02</span><span>The two halves</span></a></li>
+      <li><a href="#s3"><span class="num">03</span><span>Backend skeleton</span></a></li>
+      <li><a href="#s4"><span class="num">04</span><span>apps/common — the spine</span></a></li>
+      <li><a href="#s5"><span class="num">05</span><span>Every Django app</span></a></li>
+      <li><a href="#s6"><span class="num">06</span><span>Frontend skeleton</span></a></li>
+      <li><a href="#s7"><span class="num">07</span><span>The five frontend layers</span></a></li>
+      <li><a href="#s8"><span class="num">08</span><span>How the halves connect</span></a></li>
+      <li><a href="#s9"><span class="num">09</span><span>Flow: login</span></a></li>
+      <li><a href="#s10"><span class="num">10</span><span>Flow: create a task</span></a></li>
+      <li><a href="#s11"><span class="num">11</span><span>Flow: live notification</span></a></li>
+      <li><a href="#s12"><span class="num">12</span><span>Flow: upload → AI chat</span></a></li>
+      <li><a href="#s13"><span class="num">13</span><span>Flow: handover review</span></a></li>
+      <li><a href="#s14"><span class="num">14</span><span>Roles &amp; permissions</span></a></li>
+      <li><a href="#s15"><span class="num">15</span><span>Signals: audit &amp; alerts</span></a></li>
+      <li><a href="#s16"><span class="num">16</span><span>Background jobs &amp; email</span></a></li>
+      <li><a href="#s17"><span class="num">17</span><span>Running it</span></a></li>
+      <li><a href="#s18"><span class="num">18</span><span>Gotchas worth knowing</span></a></li>
+    </ol>
+  </nav>
+
+  <article>
+
+  <!-- ============================================================ -->
+  <section id="s1">
+    <h2><span class="sec-num">01</span>What Nexora is</h2>
+    <p class="dek">A multi-tenant team workspace with an AI assistant bolted onto its own documents.</p>
+
+    <p>
+      One sentence: <strong>teams sign up, create a workspace, and inside it run projects,
+      tasks, documents, formal task handovers, comments and notifications — plus an AI
+      assistant that answers questions using that workspace's own uploaded files.</strong>
+    </p>
+
+    <p>
+      The single most important idea in the whole codebase is the <strong>workspace</strong>.
+      It is the tenant boundary. Every domain object — a project, a task, a document, a
+      comment, a chat message, an embedding vector — carries a <code>workspace</code> foreign
+      key, and every database query filters on it. If you understand that one rule, most of
+      the backend explains itself.
+    </p>
+
+    <h3>Two processes, one product</h3>
+    <p>
+      There is no shared runtime between the halves. The frontend is a Node process serving
+      React; the backend is a Python process serving JSON. They only ever speak over HTTP
+      (and one WebSocket). That is the entire connection, and section 08 covers it in detail.
+    </p>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Half</th><th>Runs as</th><th>Speaks</th><th>Owns</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="chip web">frontend</span></td>
+            <td class="path">next dev → :3000</td>
+            <td>HTML/JS to the browser</td>
+            <td>Screens, forms, client cache, routing</td>
+          </tr>
+          <tr>
+            <td><span class="chip api">backend</span></td>
+            <td class="path">daphne/uvicorn → :8000</td>
+            <td>JSON at <code>/api/v1/…</code>, WS at <code>/ws/…</code></td>
+            <td>Data, rules, permissions, AI, email</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section id="s2">
+    <h2><span class="sec-num">02</span>The two halves, laid out</h2>
+    <p class="dek">Where things live before we look at what they do.</p>
+
+<pre>nexora/
+├── <span class="k">backend/</span>
+│   ├── config/              <span class="c"># Django project: settings, urls, asgi, celery</span>
+│   ├── apps/                <span class="c"># 15 apps, one per domain</span>
+│   │   ├── common/          <span class="c"># base models + permissions everything reuses</span>
+│   │   ├── accounts/        <span class="c"># the User model + JWT auth endpoints</span>
+│   │   ├── workspaces/      <span class="c"># tenancy: Workspace, WorkspaceMember, roles</span>
+│   │   ├── projects/ tasks/ documents/
+│   │   ├── handovers/       <span class="c"># the flagship workflow + PDF export</span>
+│   │   ├── comments/ mentions/ notifications/ activities/ invitations/
+│   │   ├── knowledge/ ai/   <span class="c"># RAG: chunk → embed → search → answer</span>
+│   │   └── core/            <span class="c"># health, dashboard, analytics, demo seeder</span>
+│   ├── templates/email/     <span class="c"># invite + password-reset bodies</span>
+│   └── manage.py
+├── <span class="w">frontend/</span>
+│   └── src/
+│       ├── app/(auth)/      <span class="c"># login, register, forgot/reset password</span>
+│       ├── app/(app)/       <span class="c"># the signed-in application</span>
+│       ├── components/      <span class="c"># ui/ (shadcn) + domain components</span>
+│       ├── lib/api/         <span class="c"># the typed fetch layer — the actual wire</span>
+│       ├── hooks/           <span class="c"># TanStack Query wrappers around lib/api</span>
+│       ├── providers/       <span class="c"># auth + active-workspace React context</span>
+│       ├── types/           <span class="c"># TS mirrors of the API's JSON shapes</span>
+│       └── proxy.ts         <span class="c"># edge route guard (Next 16's middleware)</span>
+├── docker-compose.yml       <span class="c"># db · redis · web · worker · frontend</span>
+└── .github/workflows/ci.yml</pre>
+
+    <p>
+      Notice the symmetry: the backend splits by <em>domain</em> (one folder per concept),
+      the frontend splits by <em>layer</em> (one folder per job). That is deliberate and it
+      is why you can add a feature to either side without touching much else.
+    </p>
+  </section>
+
+  <!-- ============================================================ -->
+  <section id="s3">
+    <h2><span class="sec-num">03</span>Backend skeleton: what boots, in what order</h2>
+    <p class="dek">config/ is the wiring closet. Five files, and then it's all apps.</p>
+
+    <dl class="files">
+      <div>
+        <dt>config/settings/base.py</dt>
+        <dd>Everything shared. Reads <code>.env</code> via django-environ, registers the 15 apps, configures DRF (JWT auth by default, <code>IsAuthenticated</code> by default, page size 20, filter backends), throttle rates, Redis cache, Celery, Channels, SimpleJWT lifetimes, and the whole <code>AI = {…}</code> block. <strong>Read this file first</strong> — almost every behaviour elsewhere is a knob set here.</dd>
+      </div>
+      <div>
+        <dt>settings/development.py<br>settings/production.py<br>settings/test.py</dt>
+        <dd>Thin overrides on top of base. Dev prints email to the console; test turns off Redis, the broker, SMTP and rate limiting so a 40-endpoint smoke test isn't mistaken for an attack; production tightens TLS and requires real SMTP.</dd>
+      </div>
+      <div>
+        <dt>config/urls.py</dt>
+        <dd>The routing table. Builds <code>api_v1_patterns</code> — one <code>include()</code> per app — and mounts the whole list under <code>/api/v1/</code>. Also mounts Django admin and the OpenAPI docs at <code>/api/docs/</code>. Versioning is baked in, so a future <code>/api/v2/</code> sits beside v1 rather than replacing it.</dd>
+      </div>
+      <div>
+        <dt>config/asgi.py</dt>
+        <dd>The entry point that supports both protocols. <code>ProtocolTypeRouter</code> sends ordinary HTTP to Django and <code>/ws/</code> to Channels. The WebSocket branch is wrapped in <code>OriginValidator</code> (only your frontend's origin may open a socket) and then <code>JWTAuthMiddleware</code> (pull the user out of the <code>?token=</code> query param).</dd>
+      </div>
+      <div>
+        <dt>config/celery.py</dt>
+        <dd>Creates the Celery app, pulls all <code>CELERY_*</code> settings out of Django settings, and auto-discovers <code>tasks.py</code> in every app. Imported from <code>config/__init__.py</code> so <code>@shared_task</code> binds correctly no matter how the process started.</dd>
+      </div>
+    </dl>
+
+    <h3>How a request actually reaches your code</h3>
+    <ol class="steps">
+      <li><span class="n">01</span><div class="body"><span class="where api">config/urls.py</span><p>URL matched against <code>api_v1_patterns</code>, e.g. <code>/api/v1/tasks/</code> → <code>apps.tasks.urls</code>.</p></div></li>
+      <li><span class="n">02</span><div class="body"><span class="where api">apps/&lt;app&gt;/urls.py</span><p>A DRF <code>DefaultRouter</code> maps the verb + path to a viewset method: <code>GET /</code>→<code>list</code>, <code>POST /</code>→<code>create</code>, <code>GET /{id}/</code>→<code>retrieve</code>, and so on.</p></div></li>
+      <li><span class="n">03</span><div class="body"><span class="where api">authentication</span><p><code>JWTAuthentication</code> reads <code>Authorization: Bearer …</code>, verifies the signature, and sets <code>request.user</code>. No header, or a bad one → <code>401</code>.</p></div></li>
+      <li><span class="n">04</span><div class="body"><span class="where api">throttling</span><p>Default <code>60/min</code> anonymous, <code>1000/hour</code> per user; tighter named scopes for <code>login</code>, <code>register</code>, <code>password_reset</code> and <code>ai</code>. Counters live in Redis so they're shared across worker processes.</p></div></li>
+      <li><span class="n">05</span><div class="body"><span class="where api">viewset</span><p><code>get_queryset()</code> narrows to the user's workspaces; the serializer validates input; permission classes check the role.</p></div></li>
+      <li><span class="n">06</span><div class="body"><span class="where data">database</span><p>The ORM query runs against Postgres. On write, <code>post_save</code> signals fire — which is how audit rows and notifications appear without any view code asking for them (section 15).</p></div></li>
+      <li><span class="n">07</span><div class="body"><span class="where api">response</span><p>Serializer renders JSON. List endpoints wrap it as <code>{count, next, previous, results}</code> — that shape is what <code>Paginated&lt;T&gt;</code> in the frontend types mirrors.</p></div></li>
+    </ol>
+  </section>
+
+  <!-- ============================================================ -->
+  <section id="s4">
+    <h2><span class="sec-num">04</span>apps/common — the spine</h2>
+    <p class="dek">Five small files that every other app inherits from. Understand these and the other 14 apps are mostly configuration.</p>
+
+    <h4>models.py — the base class chain</h4>
+<pre><span class="k">TimeStampedModel</span>   created_at, updated_at
+      ↓
+<span class="k">UUIDModel</span>          id = UUIDField(default=uuid4)   <span class="c"># safe to expose in URLs</span>
+      ↓
+<span class="k">BaseModel</span>          UUID + timestamps
+      ↓
+<span class="k">AuditModel</span>         + created_by, updated_by  (FK to User)
+      ↓
+<span class="k">WorkspaceScopedModel</span>  + workspace  (FK, CASCADE)   <span class="c"># ← the tenant boundary</span></pre>
+    <p>
+      <code>Task</code>, <code>Project</code>, <code>Document</code>, <code>Handover</code>,
+      <code>AIConversation</code> and <code>PromptTemplate</code> all subclass
+      <code>WorkspaceScopedModel</code>, so they get a UUID id, timestamps, who-created/
+      who-updated, and a workspace — for free, in one line.
+    </p>
+    <p>
+      The <code>related_name="%(class)ss"</code> trick means each concrete model gets a
+      sensible reverse accessor automatically: <code>workspace.tasks</code>,
+      <code>workspace.projects</code>, <code>workspace.documents</code>.
+    </p>
+
+    <h4>viewsets.py — WorkspaceScopedViewSet</h4>
+    <p>This is where multi-tenancy is actually enforced on reads:</p>
+<pre><span class="k">def</span> get_queryset(self):
+    <span class="k">return</span> self.queryset.filter(
+        workspace__members__user=self.request.user   <span class="c"># ← you only see your workspaces</span>
+    ).distinct()</pre>
+    <p>
+      And on writes, <code>perform_create</code> checks you're a member of the target
+      workspace before saving, and stamps <code>created_by</code>/<code>updated_by</code>.
+      A subclass then only declares its serializer, filters and search fields — see
+      <code>apps/tasks/views.py</code>, which is <strong>15 lines total</strong> for a fully
+      paginated, filtered, permission-checked CRUD API.
+    </p>
+
+    <h4>permissions.py — the role gates</h4>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Class</th><th>Passes for</th></tr></thead>
+        <tbody>
+          <tr><td class="path">IsWorkspaceMember</td><td>any member of the object's workspace</td></tr>
+          <tr><td class="path">IsWorkspaceManager</td><td>owner, admin, manager — the review roles</td></tr>
+          <tr><td class="path">IsWorkspaceAdmin</td><td>owner, admin</td></tr>
+          <tr><td class="path">IsWorkspaceOwner</td><td>owner only (delete, transfer ownership)</td></tr>
+          <tr><td class="path">IsWorkspaceAdminOrReadOnly</td><td>members read, admins write</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      Each resolves the workspace from the object under check — if the object <em>is</em> a
+      workspace use it directly, otherwise use <code>obj.workspace</code> — so one class
+      guards both a workspace and everything nested inside it.
+    </p>
+
+    <h4>channels_auth.py &amp; throttling.py</h4>
+    <p>
+      <code>JWTAuthMiddleware</code> exists because the browser's WebSocket API cannot set an
+      <code>Authorization</code> header. The token rides in the query string instead, which is
+      why it is short-lived (15 min) and the socket runs over <code>wss://</code> in production.
+      <code>throttling.py</code> defines the named rate-limit scopes; credential endpoints are
+      keyed by <strong>IP, not user</strong>, because the attacker you're stopping doesn't have
+      an account yet.
+    </p>
+  </section>
+
+  <!-- ============================================================ -->
+  <section id="s5">
+    <h2><span class="sec-num">05</span>Every Django app, one line each</h2>
+    <p class="dek">The standard file set per app is models · serializers · views · urls · filters · admin · tests. Below is what each app is <em>for</em>.</p>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>App</th><th>Key models</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td class="path">common</td><td>—</td><td>Abstract bases, permission classes, scoped viewset, email helper, throttles, WS auth. No tables of its own.</td></tr>
+          <tr><td class="path">accounts</td><td>User</td><td>Email-as-username custom user. Register, login, refresh, logout (blacklists the refresh token), <code>me</code>, password reset by email.</td></tr>
+          <tr><td class="path">workspaces</td><td>Workspace, WorkspaceMember</td><td>The tenant + its membership rows with roles. Auto-slugs the name. Ownership transfer endpoint.</td></tr>
+          <tr><td class="path">projects</td><td>Project</td><td>CRUD, plus archive/restore actions. Status enum: planning/active/on_hold/completed.</td></tr>
+          <tr><td class="path">tasks</td><td>Task</td><td>The unit of work. FK to project; workspace is <em>derived</em> from the project so the two can never disagree. Status, priority, assignee, due date, JSON labels.</td></tr>
+          <tr><td class="path">documents</td><td>Document</td><td>File upload (multipart), partitioned on disk by workspace id. A <code>reindex</code> action re-runs embedding.</td></tr>
+          <tr><td class="path">handovers</td><td>Handover</td><td>The flagship workflow — submit, review (approve/reject), export as PDF. See section 13.</td></tr>
+          <tr><td class="path">comments</td><td>Comment</td><td>One table for <em>every</em> commentable thing, via a generic FK (<code>content_type</code> + <code>object_id</code>). Threaded by self-FK <code>parent</code>; deletes are soft so reply chains survive.</td></tr>
+          <tr><td class="path">mentions</td><td>Mention</td><td>Parses <code>@[Name](uuid)</code> tokens out of comment text, reconciles Mention rows on every edit, fires a <code>user_mentioned</code> signal for genuinely new ones.</td></tr>
+          <tr><td class="path">notifications</td><td>Notification</td><td>Inbox rows + the WebSocket consumer that pushes them live. Listens to mention/reply signals.</td></tr>
+          <tr><td class="path">activities</td><td>Activity</td><td>Append-only audit log. Written entirely by signal handlers; CSV export endpoint.</td></tr>
+          <tr><td class="path">invitations</td><td>Invitation</td><td>Emailed invite with a <code>secrets.token_urlsafe(32)</code> token, 7-day expiry, accept/reject/resend/cancel.</td></tr>
+          <tr><td class="path">knowledge</td><td>DocumentChunk, EmbeddingJob</td><td>The <strong>retrieval</strong> half of RAG: extract → chunk → embed → store vectors in pgvector; semantic search over them.</td></tr>
+          <tr><td class="path">ai</td><td>AIConversation, AIMessage, AISettings, SearchHistory, PromptTemplate</td><td>The <strong>generation</strong> half: chat, summarise, generate tasks; pluggable Gemini/OpenAI/Ollama providers; per-workspace encrypted API keys.</td></tr>
+          <tr><td class="path">core</td><td>—</td><td>Cross-domain endpoints: <code>/health/</code>, <code>/dashboard/</code>, <code>/analytics/</code>, plus the <code>seed_demo</code> management command and the end-to-end smoke tests.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note">
+      <span class="label">The pattern to notice</span>
+      <p>
+        Apps never import each other's <em>logic</em>. <code>comments</code> knows nothing about
+        notifications; <code>tasks</code> knows nothing about the audit log. Cross-cutting
+        behaviour is wired by <strong>signals</strong> (section 15) and small service functions.
+        That's why you can delete the <code>ai</code> app and the rest still runs.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section id="s6">
+    <h2><span class="sec-num">06</span>Frontend skeleton: App Router and route groups</h2>
+    <p class="dek">Parentheses in a folder name group routes without appearing in the URL.</p>
+
+    <dl class="files">
+      <div>
+        <dt>src/app/layout.tsx</dt>
+        <dd>The root HTML shell. Loads fonts, sets metadata, and mounts <code>&lt;Providers&gt;</code> once for the whole app.</dd>
+      </div>
+      <div>
+        <dt>src/app/providers.tsx</dt>
+        <dd>The client-side provider tree: <code>QueryClientProvider</code> (TanStack Query cache) → <code>ThemeProvider</code> → <code>AuthProvider</code> → toasts. One singleton QueryClient in the browser, a fresh one per request on the server so no data leaks between users.</dd>
+      </div>
+      <div>
+        <dt>src/app/(auth)/</dt>
+        <dd>Signed-out screens: <code>login</code>, <code>register</code>, <code>forgot-password</code>, <code>reset-password</code>. Its own minimal layout — no sidebar.</dd>
+      </div>
+      <div>
+        <dt>src/app/(app)/layout.tsx</dt>
+        <dd>The signed-in shell. Blocks rendering until <code>useAuth()</code> resolves, bounces to <code>/login</code> if the session is dead, then wraps everything in <code>WorkspaceProvider</code> and renders sidebar + header + notification bell.</dd>
+      </div>
+      <div>
+        <dt>src/app/(app)/…</dt>
+        <dd>One folder per screen: <code>dashboard</code>, <code>projects</code>, <code>tasks</code>, <code>documents</code>, <code>handovers</code>, <code>activity</code>, <code>analytics</code>, <code>ai</code>, <code>settings</code>. Dynamic routes use <code>[id]</code>; each can supply a <code>loading.tsx</code> skeleton.</dd>
+      </div>
+      <div>
+        <dt>src/proxy.ts</dt>
+        <dd>Runs at the edge before any route renders. Checks only whether an auth cookie <em>exists</em> — no JWT verification — and redirects accordingly. Cheap gate; the real check happens in the layout and on the API.</dd>
+      </div>
+    </dl>
+
+    <div class="note gotcha">
+      <span class="label">Naming mismatch</span>
+      <p>
+        The README calls this file <code>middleware.ts</code>; on disk it is
+        <a href="#">src/proxy.ts</a> exporting <code>proxy()</code>. Next.js 16 renamed the
+        concept — same job, new name. Worth fixing in the README so nobody hunts for a file
+        that isn't there.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section id="s7">
+    <h2><span class="sec-num">07</span>The five frontend layers</h2>
+    <p class="dek">Data flows down this stack in exactly one direction. A page never calls <code>fetch</code> itself.</p>
+
+    <div class="lanes">
+      <div class="lane l-web">
+        <div class="tag">5 · Page</div>
+        <div class="cells"><span class="cell">app/(app)/tasks/page.tsx</span><span class="arrow">calls</span><span class="cell">useTasks()</span></div>
+      </div>
+      <div class="lane l-web">
+        <div class="tag">4 · Hook</div>
+        <div class="cells"><span class="cell">hooks/use-tasks.ts</span><span class="arrow">wraps</span><span class="cell">useQuery / useMutation</span><span class="arrow">→</span><span class="cell">tasksApi</span></div>
+      </div>
+      <div class="lane l-web">
+        <div class="tag">3 · API module</div>
+        <div class="cells"><span class="cell">lib/api/tasks.ts</span><span class="arrow">builds paths from</span><span class="cell">API_ROUTES</span></div>
+      </div>
+      <div class="lane l-web">
+        <div class="tag">2 · Client</div>
+        <div class="cells"><span class="cell">lib/api/client.ts</span><span class="arrow">adds</span><span class="cell">Bearer token</span><span class="cell">refresh-on-401</span><span class="cell">error normalising</span></div>
+      </div>
+      <div class="lane l-api">
+        <div class="tag">1 · Network</div>
+        <div class="cells"><span class="cell">fetch(NEXT_PUBLIC_API_URL + path)</span><span class="arrow">→</span><span class="cell">Django</span></div>
+      </div>
+    </div>
+
+    <h3>What each layer is responsible for</h3>
+
+    <div class="grid2">
+      <div class="panel">
+        <h4>config/env.ts</h4>
+        <p>Validates <code>NEXT_PUBLIC_API_URL</code> with a zod schema at import time. A misconfigured deploy fails immediately with a clear message instead of producing weird 404s later.</p>
+      </div>
+      <div class="panel">
+        <h4>lib/constants.ts</h4>
+        <p>Every API path and every client route, in one object. Nothing hard-codes a URL string. <code>API_ROUTES.tasks.detail(id)</code> is the only way to build a task URL.</p>
+      </div>
+      <div class="panel">
+        <h4>lib/api/client.ts</h4>
+        <p>The single <code>fetch</code> wrapper. Injects the JWT, JSON-encodes bodies (but leaves <code>FormData</code> alone so file uploads keep their multipart boundary), builds query strings skipping empty values, and normalises every non-2xx into <code>{status, message, details}</code>.</p>
+      </div>
+      <div class="panel">
+        <h4>lib/api/&lt;domain&gt;.ts</h4>
+        <p>One module per resource. Pure functions returning typed promises — <code>tasksApi.list()</code>, <code>.get()</code>, <code>.create()</code>. Also holds <code>toTaskPayload()</code>-style converters that turn form values (empty strings) into what the API wants (nulls).</p>
+      </div>
+      <div class="panel">
+        <h4>hooks/use-&lt;domain&gt;.ts</h4>
+        <p>TanStack Query wrappers. Own the cache keys, the <code>enabled</code> guards (don't fetch tasks before a workspace is chosen), and the invalidation rules after mutations.</p>
+      </div>
+      <div class="panel">
+        <h4>lib/validations/*.ts</h4>
+        <p>Zod schemas mirroring the backend's constraints, fed to react-hook-form. Catches bad input before it ever leaves the browser; the server still validates independently.</p>
+      </div>
+    </div>
+
+    <h4>The two providers that everything reads</h4>
+    <p>
+      <strong><code>AuthProvider</code></strong> holds <code>{user, isLoading, isAuthenticated,
+      login, logout}</code>. On mount, if a token cookie exists it calls <code>GET /auth/me/</code>
+      to confirm the session is real. <code>logout()</code> blacklists the refresh token
+      server-side, clears cookies, and wipes the entire query cache — important, or the next
+      user on that browser would briefly see the previous one's data.
+    </p>
+    <p>
+      <strong><code>WorkspaceProvider</code></strong> holds the active workspace, persisted in
+      <code>localStorage</code> under <code>nexora.activeWorkspace</code>. Nearly every list
+      query passes <code>activeWorkspaceId</code> as a filter — which is why switching
+      workspaces in the sidebar refreshes the whole app's data without a page reload.
+    </p>
+  </section>
+
+  <!-- ============================================================ -->
+  <section id="s8">
+    <h2><span class="sec-num">08</span>How the two halves connect</h2>
+    <p class="dek">Four mechanisms, and that is genuinely all of it.</p>
+
+    <h3>1. The base URL</h3>
+    <p>
+      <code>NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1</code> lives in
+      <code>frontend/.env.local</code>. The <code>NEXT_PUBLIC_</code> prefix means Next.js
+      <strong>inlines it into the browser bundle at build time</strong>. In Docker that value
+      must be an address a browser can reach — <code>localhost:8000</code>, never the internal
+      service name <code>web:8000</code>, which is why compose passes it as a build
+      <code>arg</code> rather than a runtime env var.
+    </p>
+
+    <h3>2. CORS</h3>
+    <p>
+      The browser refuses cross-origin calls unless the server allows them. Django's
+      <code>corsheaders</code> middleware sits near the top of the stack and answers with
+      <code>Access-Control-Allow-Origin</code> for anything in <code>CORS_ALLOWED_ORIGINS</code>
+      (<code>http://localhost:3000</code> in dev). If you ever see a request that works in
+      curl but fails in the browser with no useful error, this is the first thing to check.
+    </p>
+
+    <h3>3. JWT in cookies (and why cookies, not localStorage)</h3>
+    <p>
+      Login returns <code>{access, refresh, user}</code> as JSON. The client stores both tokens
+      in <strong>cookies</strong> — <code>nexora.accessToken</code> and
+      <code>nexora.refreshToken</code>, <code>SameSite=Lax</code>, 7-day max-age. The reason is
+      <code>proxy.ts</code>: the edge guard runs on the server, before React exists, and can
+      only read cookies. localStorage would be invisible to it.
+    </p>
+    <p>
+      They are deliberately <strong>not httpOnly</strong> — the backend returns them in the
+      response body, so JavaScript owns them anyway. The file's own comment flags this as a
+      later-phase improvement (move the refresh token to an httpOnly cookie).
+    </p>
+
+    <h4>Transparent refresh — the nicest bit of the client</h4>
+    <ol class="steps">
+      <li><span class="n">01</span><div class="body"><p>Access token expires after 15 minutes. Next request gets <code>401</code>.</p></div></li>
+      <li><span class="n">02</span><div class="body"><p><code>client.ts</code> catches the 401 and calls <code>getRefreshedToken()</code>, which POSTs the refresh token to <code>/auth/refresh/</code>.</p></div></li>
+      <li><span class="n">03</span><div class="body"><p><strong>Single-flight:</strong> a module-level <code>refreshPromise</code> means ten concurrent 401s share <em>one</em> refresh call, not ten.</p></div></li>
+      <li><span class="n">04</span><div class="body"><p>New tokens stored, the original request is retried once (<code>_isRetry</code> guards against an infinite loop). The user notices nothing.</p></div></li>
+      <li><span class="n">05</span><div class="body"><p>If refresh fails, cookies are cleared → <code>AuthProvider</code> sees no user → the app layout redirects to <code>/login</code>.</p></div></li>
+    </ol>
+    <p>
+      Backend side: <code>ROTATE_REFRESH_TOKENS</code> and <code>BLACKLIST_AFTER_ROTATION</code>
+      are both on, so each refresh issues a <em>new</em> refresh token and burns the old one. A
+      stolen refresh token stops working as soon as the real user refreshes.
+    </p>
+
+    <h3>4. The WebSocket</h3>
+    <p>
+      <code>lib/realtime.ts</code> takes the API URL, swaps <code>http→ws</code> /
+      <code>https→wss</code>, and replaces the path with <code>/ws/notifications/?token=…</code>.
+      Section 11 walks the full round trip.
+    </p>
+  </section>
+
+  <!-- ============================================================ -->
+  <section id="s9">
+    <h2><span class="sec-num">09</span>Flow: signing in</h2>
+    <p class="dek">Follow one click all the way through both halves.</p>
+
+    <ol class="steps">
+      <li><span class="n">01</span><div class="body"><span class="where web">login-form.tsx</span><p>react-hook-form validates against the zod schema in <code>lib/validations/auth.ts</code>. Bad email never leaves the browser.</p></div></li>
+      <li><span class="n">02</span><div class="body"><span class="where web">auth-provider.tsx</span><p><code>login()</code> calls <code>authApi.login()</code> → <code>apiClient.post("/auth/login/", …, {skipAuth: true})</code>.</p></div></li>
+      <li><span class="n">03</span><div class="body"><span class="where api">accounts/views.py · LoginView</span><p>Subclasses SimpleJWT's <code>TokenObtainPairView</code>, throttled at <strong>10/min per IP</strong>. <code>EmailTokenObtainPairSerializer</code> verifies the password and adds the serialized user to the response, so the client doesn't need a second round trip.</p></div></li>
+      <li><span class="n">04</span><div class="body"><span class="where web">token-storage.ts</span><p>Both tokens written to cookies.</p></div></li>
+      <li><span class="n">05</span><div class="body"><span class="where web">React state</span><p><code>setUser(res.user)</code> → <code>isAuthenticated</code> flips true → <code>(app)/layout.tsx</code> stops showing the spinner and renders the shell.</p></div></li>
+      <li><span class="n">06</span><div class="body"><span class="where web">proxy.ts</span><p>From now on, a request to <code>/login</code> sees the cookie and bounces to <code>/dashboard</code> instead.</p></div></li>
+    </ol>
+
+    <h4>Password reset, in the same shape</h4>
+    <p>
+      <code>POST /auth/password-reset/</code> <strong>always answers 202</strong>, whether or
+      not the address exists — otherwise the endpoint becomes a way to test which emails are
+      registered. The link carries a base64 <code>uid</code> and a token derived from the
+      user's password hash and last-login time, so it self-invalidates once used or once the
+      password changes. On confirm, <code>_blacklist_all_refresh_tokens()</code> revokes every
+      outstanding session, because refresh tokens outlive the reset by days and whoever
+      prompted the reset might be holding one.
+    </p>
+  </section>
+
+  <!-- ============================================================ -->
+  <section id="s10">
+    <h2><span class="sec-num">10</span>Flow: creating a task</h2>
+    <p class="dek">The representative CRUD path. Every other resource works identically.</p>
+
+    <ol class="steps">
+      <li><span class="n">01</span><div class="body"><span class="where web">task-form.tsx</span><p>Zod-validated form. <code>toTaskPayload()</code> converts <code>""</code> → <code>null</code> for optional dates and the assignee.</p></div></li>
+      <li><span class="n">02</span><div class="body"><span class="where web">use-tasks.ts</span><p><code>useCreateTask()</code> mutation fires <code>tasksApi.create(payload)</code>.</p></div></li>
+      <li><span class="n">03</span><div class="body"><span class="where api">TaskViewSet.create</span><p>Router mapped <code>POST /api/v1/tasks/</code> here. <code>WorkspaceScopedViewSet.perform_create</code> confirms membership, then stamps <code>created_by</code> / <code>updated_by</code>.</p></div></li>
+      <li><span class="n">04</span><div class="body"><span class="where api">TaskSerializer.validate</span><p>Two real rules live here: <strong>workspace is derived from the project</strong> (<code>attrs["workspace"] = project.workspace</code>), never accepted from the client; and an <code>assignee_id</code> must belong to that workspace or it's a 400.</p></div></li>
+      <li><span class="n">05</span><div class="body"><span class="where data">Postgres</span><p>Row inserted. <code>post_save</code> fires.</p></div></li>
+      <li><span class="n">06</span><div class="body"><span class="where api">activities/handlers.py</span><p>An <code>Activity</code> row is appended — <code>task.created</code>, actor, workspace, <code>{title, status}</code> metadata. The task app never asked for this.</p></div></li>
+      <li><span class="n">07</span><div class="body"><span class="where web">cache invalidation</span><p><code>onSuccess</code> calls <code>qc.invalidateQueries({queryKey: ["tasks"]})</code>. Every mounted task list refetches; the new row appears everywhere at once.</p></div></li>
+    </ol>
+
+    <div class="note">
+      <span class="label">Why the list query is fast</span>
+      <p>
+        <code>TaskViewSet.queryset</code> uses <code>select_related(...)</code> on all six FKs,
+        so serializing 20 tasks with their nested assignee, reporter and project is one SQL
+        query, not 120. Every viewset in the repo does this.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section id="s11">
+    <h2><span class="sec-num">11</span>Flow: a live notification</h2>
+    <p class="dek">Someone @-mentions you in a comment on a task. Here is the bell lighting up.</p>
+
+    <ol class="steps">
+      <li><span class="n">01</span><div class="body"><span class="where web">mention-textarea.tsx</span><p>The autocomplete inserts a token into the comment text: <code>@[Dhruw Vaviya](7c3f…-uuid)</code>.</p></div></li>
+      <li><span class="n">02</span><div class="body"><span class="where api">mentions/services.py</span><p><code>sync_comment_mentions()</code> regex-extracts the UUIDs, keeps only users who are <em>members of that workspace</em> and aren't the author, creates <code>Mention</code> rows for new ones, deletes rows for mentions removed by an edit, and sends the <code>user_mentioned</code> signal.</p></div></li>
+      <li><span class="n">03</span><div class="body"><span class="where api">notifications/handlers.py</span><p>Receives the signal and calls <code>create_notification(...)</code>. This is the only file that knows "a mention should notify someone" — the mentions app stays ignorant of notifications.</p></div></li>
+      <li><span class="n">04</span><div class="body"><span class="where api">notifications/services.py</span><p>Row inserted, then delivery is deferred with <code>transaction.on_commit()</code>. Pushing inside the transaction could beat the write to disk, and a client that refetched would find nothing. On rollback, nothing is sent at all.</p></div></li>
+      <li><span class="n">05</span><div class="body"><span class="where data">Redis channel layer</span><p><code>push_to_user()</code> sends into the group <code>notifications.&lt;uuid-without-dashes&gt;</code>. Wrapped in a broad try/except — realtime is a convenience, and a dead Redis must never break the comment that triggered it.</p></div></li>
+      <li><span class="n">06</span><div class="body"><span class="where api">NotificationConsumer</span><p>Every socket that user has open is in that group. Each receives <code>{"type": "notification", …}</code>.</p></div></li>
+      <li><span class="n">07</span><div class="body"><span class="where web">use-notification-socket.ts</span><p>On message, it <strong>does not trust the pushed payload</strong> — it calls <code>invalidateQueries(["notifications"])</code> and refetches over REST. One source of truth; the paginated, filtered list can't drift.</p></div></li>
+    </ol>
+
+    <h4>Connection lifecycle</h4>
+    <p>
+      <code>OriginValidator</code> refuses sockets from origins you don't serve (checked
+      against <code>CORS_ALLOWED_ORIGINS</code>, not <code>ALLOWED_HOSTS</code> — those differ
+      the moment the API and app live on separate domains). <code>JWTAuthMiddleware</code>
+      resolves the user from the query token; an anonymous connection is closed with code
+      <strong>4401</strong>, and the client then retries at the <em>slowest</em> backoff rather
+      than hammering the server with credentials it already refused. Ordinary drops reconnect
+      on a 1s → 30s backoff ladder. If the socket never opens at all, the bell falls back to
+      polling — the feature degrades rather than disappearing.
+    </p>
+  </section>
+
+  <!-- ============================================================ -->
+  <section id="s12">
+    <h2><span class="sec-num">12</span>Flow: upload a document, then ask the AI about it</h2>
+    <p class="dek">Two halves — ingestion (write time) and retrieval (read time). They meet in one Postgres column.</p>
+
+    <h3>Ingestion — <code>apps/knowledge</code></h3>
+    <ol class="steps">
+      <li><span class="n">01</span><div class="body"><span class="where web">document-upload-form.tsx</span><p>Sends <code>FormData</code>. <code>client.ts</code> detects it and skips JSON encoding so the browser sets the multipart boundary itself.</p></div></li>
+      <li><span class="n">02</span><div class="body"><span class="where api">DocumentViewSet</span><p><code>MultiPartParser</code> accepts the file; it's stored at <code>media/documents/&lt;workspace-id&gt;/&lt;name&gt;</code>.</p></div></li>
+      <li><span class="n">03</span><div class="body"><span class="where api">knowledge/handlers.py</span><p><code>post_save</code> on Document → if the file type is extractable, <code>enqueue_document()</code>. Metadata-only edits deliberately do <em>not</em> re-trigger this.</p></div></li>
+      <li><span class="n">04</span><div class="body"><span class="where api">processor.enqueue_document</span><p>Creates a pending <code>EmbeddingJob</code>, then dispatches the Celery task <strong>on commit</strong> — otherwise the worker could read the document row before the upload transaction committed. If the broker is down, it falls back to running inline: slow beats lost.</p></div></li>
+      <li><span class="n">05</span><div class="body"><span class="where data">Celery worker</span><p><code>process_document_task</code> → <code>process_document()</code>: extract text → <code>chunk_text()</code> → embed → store.</p></div></li>
+      <li><span class="n">06</span><div class="body"><span class="where data">chunker.py</span><p>~220-word windows with 40-word overlap, so a sentence spanning a boundary is still retrievable. Deterministic and dependency-free.</p></div></li>
+      <li><span class="n">07</span><div class="body"><span class="where data">DocumentChunk rows</span><p><code>_store_chunks()</code> deletes the document's old chunks and bulk-inserts new ones in one transaction — so reindexing is idempotent. Each row carries a <strong>384-dimension</strong> pgvector, with an HNSW cosine index for fast nearest-neighbour lookup.</p></div></li>
+    </ol>
+
+    <div class="note gotcha">
+      <span class="label">Locked-in number</span>
+      <p>
+        <code>AI["EMBEDDING_DIM"] = 384</code> is compiled into the database column by the
+        migration. Switching to a 768- or 1536-dim embedding model needs a new migration
+        altering <code>DocumentChunk.embedding</code>, not just an env-var change.
+      </p>
+    </div>
+
+    <h3>Retrieval — <code>apps/ai</code></h3>
+    <ol class="steps">
+      <li><span class="n">01</span><div class="body"><span class="where api">ChatView.post</span><p><code>resolve_workspace(user, workspace_id)</code> is the isolation gate — the workspace arrives in the request <em>body</em> here, not the URL, so DRF object permissions can't do it. Throttled at 30/hour because LLM calls cost money.</p></div></li>
+      <li><span class="n">02</span><div class="body"><span class="where api">AIMessage (user)</span><p>The user's message is saved <em>first</em>, so history stays consistent even if the LLM call fails.</p></div></li>
+      <li><span class="n">03</span><div class="body"><span class="where api">rag.answer_question</span><p><code>security.sanitize_input()</code> caps length and strips injection attempts, then two retrievals run.</p></div></li>
+      <li><span class="n">04</span><div class="body"><span class="where data">semantic_search()</span><p>Embeds the question, runs <code>CosineDistance</code> against DocumentChunk <strong>filtered by workspace</strong>, drops anything past distance 0.75, returns the top 6.</p></div></li>
+      <li><span class="n">05</span><div class="body"><span class="where api">build_structured_context()</span><p>A second, non-vector context: recent projects, open/overdue task counts, and tasks keyword-matching the question. This is why the assistant can answer "what's overdue?" — no document says that.</p></div></li>
+      <li><span class="n">06</span><div class="body"><span class="where api">providers/factory.py</span><p>Resolves the provider: per-workspace <code>AISettings</code> wins, else the project default. The API key is Fernet-decrypted from <code>api_key_encrypted</code>, or falls back to the env key.</p></div></li>
+      <li><span class="n">07</span><div class="body"><span class="where api">response</span><p>Returns <code>{answer, sources, confidence}</code>. Confidence is derived from the top similarity score — ≥0.6 high, ≥0.4 medium, else low — and the UI renders it as a badge with the cited chunks in a sources panel.</p></div></li>
+    </ol>
+
+    <p>
+      Failure modes are handled explicitly rather than 500-ing: a <code>DatabaseError</code>
+      (pgvector not installed) returns a <code>503</code> with setup instructions, and a
+      <code>ProviderError</code> (bad key, LLM down) returns a <code>502</code>.
+    </p>
+  </section>
+
+  <!-- ============================================================ -->
+  <section id="s13">
+    <h2><span class="sec-num">13</span>Flow: the handover review</h2>
+    <p class="dek">The one workflow with real state transitions and role gates. It's the app's centrepiece.</p>
+
+    <ol class="steps">
+      <li><span class="n">01</span><div class="body"><span class="where web">handover-form.tsx</span><p>A member submits: task, recipient, work summary, pending items, resources. Status starts <code>pending</code>.</p></div></li>
+      <li><span class="n">02</span><div class="body"><span class="where api">perform_create</span><p>Notifies the recipient — <em>"X handed over 'Task title'"</em>.</p></div></li>
+      <li><span class="n">03</span><div class="body"><span class="where api">POST /handovers/{id}/review/</span><p>Two guards, in order: the caller's membership role must be in <code>REVIEWER_ROLES</code> (owner / admin / manager) → else 403; and the handover must still be <code>pending</code> → else 400. That second check is what stops a double-approve.</p></div></li>
+      <li><span class="n">04</span><div class="body"><span class="where data">on approve</span><p>Status set, reviewer and <code>reviewed_at</code> stamped, <strong>and the task is reassigned</strong>: <code>task.assignee = handover.to_user</code>. This is the only place a handover touches the task.</p></div></li>
+      <li><span class="n">05</span><div class="body"><span class="where api">notifications</span><p>Two go out on approval — "this task is now yours" to the recipient, "your handover was approved" to the submitter. On rejection, one, carrying the reviewer's comment.</p></div></li>
+      <li><span class="n">06</span><div class="body"><span class="where api">GET /handovers/{id}/export/</span><p>reportlab renders a PDF and returns it with a <code>Content-Disposition: attachment</code> header. reportlab is imported <em>inside</em> the method so the app still boots if it isn't installed.</p></div></li>
+    </ol>
+
+    <p>
+      Edit/delete rules sit in <code>perform_update</code> and <code>perform_destroy</code>:
+      only the submitter may edit; only pending handovers may be deleted, by the submitter or
+      a reviewer. Everything else is inherited from <code>WorkspaceScopedViewSet</code>.
+    </p>
+  </section>
+
+  <!-- ============================================================ -->
+  <section id="s14">
+    <h2><span class="sec-num">14</span>Roles &amp; permissions</h2>
+    <p class="dek">Four roles, stored on the WorkspaceMember row. A user can hold different roles in different workspaces.</p>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Capability</th>
+            <th class="num">Owner</th>
+            <th class="num">Admin</th>
+            <th class="num">Manager</th>
+            <th class="num">Member</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Create &amp; edit content, comment, submit handovers</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+          <tr><td>Review handovers (approve / reject)</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">—</td></tr>
+          <tr><td>Manage members &amp; invitations</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">—</td><td class="no">—</td></tr>
+          <tr><td>Change AI settings &amp; API keys</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">—</td><td class="no">—</td></tr>
+          <tr><td>Transfer ownership, delete workspace</td><td class="yes">✓</td><td class="no">—</td><td class="no">—</td><td class="no">—</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      Enforcement happens in three places, and all three matter:
+      <strong>queryset scoping</strong> (you can't even see other workspaces' rows),
+      <strong>permission classes</strong> (object-level role checks), and
+      <strong>serializer validation</strong> (e.g. an assignee must be a workspace member).
+      Owner is deliberately <em>not</em> an invitable role — ownership moves only through the
+      dedicated transfer endpoint.
+    </p>
+  </section>
+
+  <!-- ============================================================ -->
+  <section id="s15">
+    <h2><span class="sec-num">15</span>Signals: how the audit log and notifications write themselves</h2>
+    <p class="dek">The decoupling mechanism. No view in the repo calls "log this" or "notify them" for these cases.</p>
+
+    <p>
+      <code>activities/handlers.py</code> registers a generic pair of <code>post_save</code> /
+      <code>post_delete</code> receivers per model:
+    </p>
+<pre>_register_audited(Project,  <span class="w">"project"</span>,  <span class="k">lambda</span> i: {<span class="w">"name"</span>: i.name, <span class="w">"archived"</span>: i.archived})
+_register_audited(Task,     <span class="w">"task"</span>,     <span class="k">lambda</span> i: {<span class="w">"title"</span>: i.title, <span class="w">"status"</span>: i.status})
+_register_audited(Document, <span class="w">"document"</span>, <span class="k">lambda</span> i: {<span class="w">"title"</span>: i.title})
+_register_audited(Handover, <span class="w">"handover"</span>, <span class="k">lambda</span> i: {<span class="w">"task"</span>: i.task.title, <span class="w">"status"</span>: i.status})</pre>
+    <p>
+      Adding history for a new model is one line. That's the payoff for the indirection.
+    </p>
+
+    <div class="note gotcha">
+      <span class="label">The subtle bug this had to solve</span>
+      <p>
+        Deleting a workspace cascades into every child row, and each cascade fires
+        <code>post_delete</code> — which would try to append activity rows pointing at a
+        workspace that's about to vanish, failing the whole delete on a foreign-key violation
+        at commit. So <code>pre_delete</code> adds the workspace id to a suppression set and
+        <code>post_delete</code> removes it. The rows would have been pointless anyway:
+        <code>Activity.workspace</code> cascades, so they'd die with it.
+      </p>
+    </div>
+
+    <p>
+      Notifications work the same way but listen to <em>domain</em> signals rather than model
+      saves: <code>user_mentioned</code> (custom signal from the mentions service) and
+      <code>post_save</code> on <code>Comment</code> for replies. Handover notifications are the
+      exception — those are explicit calls in the view, because they depend on the review
+      decision rather than on the row simply changing.
+    </p>
+  </section>
+
+  <!-- ============================================================ -->
+  <section id="s16">
+    <h2><span class="sec-num">16</span>Background jobs, email &amp; caching</h2>
+    <p class="dek">Redis wears three hats here. Locally you can skip it entirely.</p>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Redis is used as</th><th>For</th><th>Without Redis (local)</th></tr></thead>
+        <tbody>
+          <tr><td>Celery broker</td><td>Document embedding, outgoing email</td><td><code>CELERY_TASK_ALWAYS_EAGER</code> → tasks run inline</td></tr>
+          <tr><td>Channels layer</td><td>WebSocket group delivery</td><td>In-process layer; works for one process</td></tr>
+          <tr><td>Cache</td><td>DRF throttle counters</td><td>LocMemCache — per-process, so limits multiply by worker count</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      That last row is the reason Redis is non-optional in production: with four gunicorn
+      workers and a per-process cache, a "10 logins per minute" limit silently becomes forty.
+    </p>
+
+    <p>
+      Email goes through <code>apps/common/email.py</code>'s <code>queue_templated_email()</code>,
+      which renders a template from <code>backend/templates/email/</code> and hands it to a
+      Celery task. Note the <strong>second template engine</strong> registered in settings under
+      the name <code>"text"</code> with autoescape off: without it, an <code>&amp;</code> in a
+      reset URL renders as <code>&amp;amp;</code> and the link arrives carrying a parameter
+      literally named <code>amp;token</code>. Every plain-text email uses
+      <code>render_to_string(..., using="text")</code>.
+    </p>
+
+    <p>
+      Celery is tuned for the embedding workload specifically: prefetch multiplier 1 and
+      concurrency 2, because each worker process holds its own copy of a multi-hundred-megabyte
+      transformer model in memory.
+    </p>
+  </section>
+
+  <!-- ============================================================ -->
+  <section id="s17">
+    <h2><span class="sec-num">17</span>Running it</h2>
+    <p class="dek">Two paths. Docker for the full stack, or two terminals for day-to-day work.</p>
+
+    <div class="grid2">
+      <div class="panel">
+        <h4>Everything, one command</h4>
+<pre>cp .env.docker.example .env
+<span class="c"># SECRET_KEY must not contain '$'
+# (compose reads it as a variable)</span>
+docker compose up --build</pre>
+        <p>Brings up db · redis · web · worker · frontend. Migrations run on start. <code>web</code> and <code>worker</code> share one image and differ only in their command, so they can't drift apart.</p>
+      </div>
+      <div class="panel">
+        <h4>Local, two terminals</h4>
+<pre><span class="c"># terminal 1</span>
+cd backend
+python manage.py migrate
+python manage.py runserver   <span class="c"># :8000</span>
+
+<span class="c"># terminal 2</span>
+cd frontend
+pnpm install &amp;&amp; pnpm dev     <span class="c"># :3000</span></pre>
+        <p><code>runserver</code> here is daphne's ASGI version (daphne is listed <em>before</em> <code>staticfiles</code> in <code>INSTALLED_APPS</code>), so WebSockets work in dev with no extra process.</p>
+      </div>
+    </div>
+
+    <h4>Demo data</h4>
+    <p>
+      <code>python manage.py seed_demo --owner-email you@example.com</code> creates three
+      workspaces, eleven teammates, twelve projects, ~60 tasks, documents with real embedded
+      content, handovers in every review state, and eight weeks of backdated activity — so the
+      analytics charts and audit-log date filters actually have something to show.
+      <code>--reset</code> removes only the seeded workspaces and <code>@nexora.demo</code>
+      accounts; your real data is untouched.
+    </p>
+
+    <h4>Tests</h4>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Command</th><th>Runs</th></tr></thead>
+        <tbody>
+          <tr><td class="path">python manage.py test</td><td>89 Django tests; auto-selects <code>config.settings.test</code> (no Redis, no broker, no SMTP, throttling off)</td></tr>
+          <tr><td class="path">pnpm typecheck</td><td><code>tsc --noEmit</code></td></tr>
+          <tr><td class="path">pnpm test</td><td>Vitest + Testing Library over <code>src/**/*.test.{ts,tsx}</code></td></tr>
+          <tr><td class="path">pnpm build</td><td>Production build — catches what dev mode forgives</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      CI (<code>.github/workflows/ci.yml</code>) runs the backend suite against
+      Postgres+pgvector and Redis, then typechecks, lints, tests and builds the frontend.
+      Pushes to <code>main</code>/<code>develop</code> also build both Docker images.
+    </p>
+  </section>
+
+  <!-- ============================================================ -->
+  <section id="s18">
+    <h2><span class="sec-num">18</span>Gotchas worth knowing</h2>
+    <p class="dek">Things that will bite, and the reason each one exists.</p>
+
+    <div class="note gotcha">
+      <span class="label">The error you just hit</span>
+      <p>
+        <code>getaddrinfo failed</code> on the Neon host is a <strong>DNS failure, not a Django
+        bug</strong>. <code>runserver</code> calls <code>check_migrations()</code> at boot,
+        which needs the database, so a network blip at exactly the wrong moment takes the whole
+        start-up down. The host resolves fine now — rerun the server. If it recurs,
+        <code>ipconfig /flushdns</code>; Neon's free tier also suspends idle endpoints, so the
+        first connect after a sleep can be slow.
+      </p>
+    </div>
+
+    <dl class="files">
+      <div>
+        <dt>NEXT_PUBLIC_API_URL is build-time</dt>
+        <dd>Changing it in <code>.env.local</code> after a build does nothing to the shipped bundle. Rebuild. In Docker it must be the browser-reachable address, not the compose service name.</dd>
+      </div>
+      <div>
+        <dt>proxy.ts only checks cookie presence</dt>
+        <dd>Not validity. A stale cookie gets you past the edge guard; the API then 401s, the refresh fails, and <code>(app)/layout.tsx</code> redirects. That's intentional — verifying JWTs at the edge would be slow and duplicate work.</dd>
+      </div>
+      <div>
+        <dt>Workspace is never client-supplied on a task</dt>
+        <dd><code>TaskSerializer</code> derives it from the project. Sending a <code>workspace</code> field is silently ignored — the field is read-only.</dd>
+      </div>
+      <div>
+        <dt>SIGNING_KEY, not SECRET_KEY</dt>
+        <dd>SimpleJWT rejects the name <code>SECRET_KEY</code> outright, taking the app down at import time. Settings falls back to <code>SECRET_KEY</code>'s value when <code>JWT_SIGNING_KEY</code> is unset <em>or blank</em>.</dd>
+      </div>
+      <div>
+        <dt>Compose YAML indentation</dt>
+        <dd>The <code>web</code> command's continuation line sits at the <em>same</em> indent as the first. Indent it further and the folded block keeps the newline, <code>sh -c</code> gets separate arguments, and uvicorn binds 127.0.0.1 — unreachable through the port map.</dd>
+      </div>
+      <div>
+        <dt>pnpm only</dt>
+        <dd>The lockfile is pnpm's. npm or yarn will resolve a different tree.</dd>
+      </div>
+      <div>
+        <dt>README says middleware.ts</dt>
+        <dd>The file is <code>src/proxy.ts</code>. Next.js 16 renamed it; the README didn't follow.</dd>
+      </div>
+    </dl>
+
+    <h3>Where to start reading, if you want a path</h3>
+    <ol>
+      <li><code>backend/config/settings/base.py</code> — every knob in the system.</li>
+      <li><code>backend/apps/common/</code> — models, viewsets, permissions. The spine.</li>
+      <li><code>backend/apps/tasks/</code> — the smallest complete vertical, ~150 lines total.</li>
+      <li><code>frontend/src/lib/api/client.ts</code> — the actual wire between halves.</li>
+      <li><code>frontend/src/hooks/use-tasks.ts</code> + <code>app/(app)/tasks/page.tsx</code> — the same vertical from the other side.</li>
+      <li><code>backend/apps/handovers/views.py</code> — the one place with real workflow rules.</li>
+    </ol>
+  </section>
+
+  </article>
+
+  <footer class="end">
+    Nexora · Django 5.1 + DRF · Next.js 16 + React 19 · PostgreSQL/pgvector · Redis · Celery
+  </footer>
+
+</div>
+
+</body>
+</html>
