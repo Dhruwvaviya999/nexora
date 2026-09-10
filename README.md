@@ -47,7 +47,7 @@ flowchart LR
     subgraph Client["Next.js 16 (App Router)"]
         UI["React 19 UI<br/>shadcn/ui + Tailwind"]
         RQ["TanStack Query<br/>cache + mutations"]
-        MW["middleware.ts<br/>route guard"]
+        MW["proxy.ts<br/>route guard"]
         UI --> RQ
     end
 
@@ -139,7 +139,7 @@ nexora/
         │                    # handovers, documents, activity, ai, …
         ├── components/      # ui/ (shadcn), charts/, domain components
         ├── hooks/ lib/ providers/ types/
-        └── middleware.ts    # cookie-based route guard
+        └── proxy.ts    # cookie-based route guard
 ```
 
 ## Quickstart
