@@ -154,18 +154,39 @@ toast, so nothing is missed if the failing field is scrolled off screen.
 
 ### Query errors
 
-`useQuery` returns `{error, isError}` rather than throwing. Pages generally treat
-"no data" and "error" the same way:
+`useQuery` returns `{error, isError}` rather than throwing. Pages branch on it
+**before** the loading guard:
 
 ```ts
+if (isError) {
+  return <ErrorState error={error} onRetry={() => refetch()} />;
+}
 if (isLoading || !handover) return <Loader2 className="animate-spin" />;
 ```
-`handovers/[id]/page.tsx:72-78`
+`handovers/[id]/page.tsx`
 
-This is a real gap: a **failed** fetch renders the same infinite spinner as a slow
-one. There is no `isError` branch on most detail pages, and there is no React
-error boundary anywhere in `frontend/src/`. Flagged in
-[25-known-limitations.md](25-known-limitations.md).
+`components/shared/error-state.tsx` derives its heading from the normalised
+`ApiError.status` — so a 403 reads "You don't have access to this" with the
+server's specific reason underneath, rather than a generic failure — and offers
+a retry button wired to `refetch()`.
+
+Applied to all eight pages that previously spun forever: the four detail pages,
+two edit pages, workspace settings and analytics.
+
+### Render errors — error boundaries
+
+Three boundaries, added because a render-time exception previously left the last
+committed UI frozen with no way forward:
+
+| File | Catches | Keeps |
+|---|---|---|
+| `app/(app)/error.tsx` | Anything thrown inside the authenticated shell | The sidebar and header, so the user can navigate away |
+| `app/error.tsx` | Public routes and anything outside `(app)` | Full-page fallback |
+| `app/global-error.tsx` | Failures in the **root layout itself** | Nothing — it replaces `<html>`, so it is styled inline |
+
+Each renders `error.digest` when present (the server-side correlation id Next.js
+generates) and a `reset()` button, which re-renders the segment and recovers
+from a transient failure without a full reload.
 
 ### Retry policy
 
@@ -239,16 +260,17 @@ creates produce an `IntegrityError`, which nothing catches, so the user sees a
 
 | Gap | Severity | Detail |
 |---|---|---|
-| No error boundary | **High** | A render-time exception blanks the page. Next.js has no `error.tsx` in this app either |
-| No `isError` handling on detail pages | Medium | A failed fetch shows an infinite spinner |
-| No structured logging or error tracking | Medium | No `LOGGING` config, no Sentry — production 500s are invisible |
+| ~~No error boundary~~ | ✅ Fixed | Three boundaries added; see above |
+| ~~No `isError` handling on detail pages~~ | ✅ Fixed | Eight pages now render `<ErrorState/>` with retry |
+| No structured logging or error tracking | **High** | No `LOGGING` config, no Sentry — production 500s are invisible. Now the largest error-handling gap |
 | No custom exception handler | Medium | Unhandled exceptions return no structured JSON |
 | `IntegrityError` is uncaught | Low–Medium | Slug races and any future constraint violation become 500s |
 | `downloadFile` has no refresh-retry | Low | An expired token at download time fails instead of refreshing |
 | No request correlation id | Low | Hard to trace one user's failing request through logs |
 
-The recommended first fix is an `app/error.tsx` plus an `isError` branch on the
-detail pages — small changes, large improvement in perceived reliability.
+The error boundaries and `isError` branches are done. The recommended next fix
+is a `LOGGING` configuration plus an error tracker — the boundaries now capture
+failures in the UI, but nothing records them anywhere a developer will see.
 
 ---
 

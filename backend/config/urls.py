@@ -49,7 +49,10 @@ urlpatterns = [
     ),
 ]
 
-# Serve uploaded media via the dev server. In production a real object store
-# (S3/Cloudinary) or the web server handles this.
+# Local convenience only. Documents are downloaded through
+# GET /api/v1/documents/{id}/download/, which checks workspace membership and
+# works identically with DEBUG off and with S3 -- nothing in the product links
+# to a /media/ path, because a public media URL would be an unauthenticated
+# cross-tenant read.
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

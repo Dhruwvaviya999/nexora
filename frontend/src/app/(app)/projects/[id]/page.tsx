@@ -24,10 +24,11 @@ import { useTasks } from "@/hooks/use-tasks";
 import { useDocuments } from "@/hooks/use-documents";
 import { ROUTES } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
+import { ErrorState } from "@/components/shared/error-state";
 
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { data: project, isLoading } = useProject(id);
+  const { data: project, isLoading, isError, error, refetch } = useProject(id);
   const { data: tasks, isLoading: tasksLoading } = useTasks({
     workspace: project?.workspace,
     project: id,
@@ -36,6 +37,12 @@ export default function ProjectDetailPage() {
     workspace: project?.workspace,
     project: id,
   });
+
+  // A failed fetch used to be indistinguishable from a slow one and
+  // spun forever; surface the real error instead.
+  if (isError) {
+    return <ErrorState error={error} onRetry={() => refetch()} />;
+  }
 
   if (isLoading || !project) {
     return (

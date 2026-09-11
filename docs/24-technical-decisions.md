@@ -182,17 +182,18 @@ next refresh fails — turning silent compromise into a visible session death.
 
 ### Cookies rather than localStorage ✅
 
-`lib/auth/token-storage.ts:3-10`: *"Cookies (not localStorage) are used so the
-Next.js proxy can read the access token server-side for route protection. They
-are NOT httpOnly — the backend returns tokens in the JSON body, so the client
-owns them. Good enough for this foundation; a later phase can move refresh tokens
-to an httpOnly cookie."*
+**Superseded.** The original design put both tokens in non-httpOnly cookies so
+`proxy.ts` could read them, and documented the trade-off in the file.
 
-**This is the decision most likely to be challenged.** The file documents both
-the reason and the trade-off, which is the right way to have made it. The
-follow-up answer is in
-[18-security.md](18-security.md) and
-[interviews/difficult-followups.md](interviews/difficult-followups.md).
+That has since been changed: the backend issues the refresh token as an
+**httpOnly** cookie, the access token is held in memory, and `proxy.ts` reads
+`nexora.session` — a marker containing `"1"` and no credential. The original
+reasoning was sound (the edge guard genuinely needed *something* readable), but
+the marker satisfies that need without exposing a token.
+
+The lesson worth keeping: the constraint was "the edge needs to know whether a
+session exists", not "the edge needs the token". Restating the requirement
+removed the trade-off entirely. See [18-security.md](18-security.md).
 
 ### Login returns the user object with the tokens 🔍
 
@@ -444,7 +445,7 @@ being caught by them.
 | Filter state in `useState`, not the URL | Filtered views cannot be shared or bookmarked |
 | No `CONN_MAX_AGE` | One line, immediate win |
 | `IsWorkspaceAdmin` / `IsWorkspaceManager` defined but unused | The same logic is written inline in three places |
-| No error boundary | A render error blanks the page |
+| ~~No error boundary~~ | ✅ Fixed — three boundaries added |
 
 ---
 

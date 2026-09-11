@@ -13,7 +13,8 @@ it, who can change it, and what makes the UI re-render?**
 flowchart TD
     subgraph Browser
         LS["localStorage<br/>active workspace"]
-        CK["Cookies<br/>access + refresh tokens"]
+        CK["httpOnly cookie<br/>refresh token (API origin)"]
+        MEM["Memory<br/>access token"]
         RQ["TanStack Query cache<br/>ALL server data"]
         CTX["React Context<br/>AuthProvider, WorkspaceProvider"]
         LOCAL["useState<br/>filters, dialogs, drafts"]
@@ -26,7 +27,8 @@ flowchart TD
 
     URL --> RQ
     CTX --> RQ
-    CK --> RQ
+    MEM --> RQ
+    CK --> MEM
     LS --> CTX
     RQ <-->|"fetch / invalidate"| PG
     RQ --> LOCAL
@@ -37,7 +39,7 @@ flowchart TD
 | 1 | PostgreSQL | Everything real | ✅ | ✅ |
 | 2 | TanStack Query cache | A copy of server data | ❌ | ❌ |
 | 3 | React Context | `user`, `activeWorkspace` | ❌ (rebuilt on mount) | ❌ |
-| 4 | Cookies | `nexora.accessToken`, `nexora.refreshToken` | ✅ | ✅ |
+| 4 | Cookies | `nexora_refresh` (**httpOnly**, API origin) + `nexora.session` marker | ✅ | ✅ |
 | 5 | localStorage | `nexora.activeWorkspace` | ✅ | ✅ (via `storage` event) |
 | 6 | URL | ids, `?next=`, `?task=`, `?project=`, `?token=`, `?uid=` | ✅ | shareable |
 | 7 | `useState` | Filters, dialog open/closed, form drafts | ❌ | ❌ |
@@ -100,7 +102,7 @@ briefly render the previous user's cached lists before the refetches land.
 | Question | Answer |
 |---|---|
 | Where does it live? | `React.useState` inside `AuthProvider` |
-| What is the source of truth? | The cookies (proof) + `GET /auth/me/` (identity) |
+| What is the source of truth? | The httpOnly refresh cookie (proof) + `GET /auth/me/` (identity) |
 | Who can change it? | Only `login()`, `logout()`, `setUser()` |
 | Who reads it? | `(app)/layout.tsx`, `nav-user`, `settings`, `handovers/[id]`, `handovers` list |
 | What re-renders? | Every `useAuth()` consumer, because the context value changes |
@@ -110,9 +112,10 @@ The context value is memoised on `[user, isLoading, login, logout]`
 (`auth-provider.tsx:81-91`), so an unrelated re-render of the provider does not
 cascade.
 
-**The bootstrap is the important part:** a page reload leaves the cookies but
-empties the JS heap, so `isLoading` starts `true`, `/auth/me/` runs, and
-`(app)/layout.tsx` shows a spinner until it resolves. That is why there is a
+**The bootstrap is the important part:** a page reload leaves the refresh
+cookie but wipes the in-memory access token, so the provider calls
+`ensureAccessToken()` — which mints a fresh access token from the cookie — and
+then `/auth/me/`. `isLoading` stays `true` throughout, which is why there is a
 brief spinner on every hard refresh of an authenticated page.
 
 ---
@@ -153,24 +156,24 @@ The propagation is automatic.
 
 ---
 
-## 5. Token state — cookies
+## 5. Token state — memory + an httpOnly cookie
 
 | Question | Answer |
 |---|---|
-| Where? | `document.cookie`, keys `nexora.accessToken` / `nexora.refreshToken` |
-| Who writes? | `tokenStorage.set()` — called from `login()` and from `refreshAccessToken()` |
+| Where? | **Access token: a module-scoped variable — memory only.** Refresh token: an httpOnly cookie the browser holds and script cannot read |
+| Who writes? | `tokenStorage.setAccess()` for the access token; the **server** for the refresh cookie |
 | Who clears? | `tokenStorage.clear()` — logout, failed refresh, failed bootstrap |
 | Who reads? | `client.ts` (every request), `use-notification-socket.ts`, `download.ts`, and **`proxy.ts` server-side** |
-| Max-Age | 7 days for both, mirroring the backend's refresh lifetime |
+| Max-Age | Refresh cookie: derived from `REFRESH_TOKEN_LIFETIME` (7 days). Access token: none — it is memory |
 
 **Not React state.** `tokenStorage` is a plain module with no subscribers, so
 writing a token does **not** re-render anything. That is intentional — the token
 is plumbing, and the user-visible consequence is carried by `AuthProvider`
 instead.
 
-Cookies rather than `localStorage` for one specific reason: `proxy.ts` runs
-server-side at the edge and can only read cookies. That single requirement
-determines the whole storage choice — and its security cost. See
+The edge guard runs server-side and can only read cookies — but it does not
+need the *token*, only to know whether a session exists. That is what
+`nexora.session` provides, which is why the refresh token can be httpOnly. See
 [18-security.md](18-security.md).
 
 ---

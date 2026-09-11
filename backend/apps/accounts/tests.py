@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core import mail
 from django.core.cache import cache
@@ -253,10 +254,12 @@ class PasswordResetTests(APITestCase):
 
     def test_reset_revokes_outstanding_refresh_tokens(self):
         """Whoever prompted the reset must not keep a working refresh token."""
-        login = self.client.post(
+        self.client.post(
             LOGIN, {"email": self.user.email, "password": OLD}, format="json"
         )
-        refresh = login.data["refresh"]
+        # The refresh token is in an httpOnly cookie, not the response body.
+        refresh = self.client.cookies[settings.AUTH_COOKIE_NAME].value
+        self.assertTrue(refresh)
 
         uid, token = self.credentials()
         self.client.post(
@@ -266,6 +269,8 @@ class PasswordResetTests(APITestCase):
         )
 
         self.assertTrue(BlacklistedToken.objects.filter(token__user=self.user).exists())
+        # Explicit body, so the assertion holds even though the confirm
+        # response also cleared the cookie.
         refreshed = self.client.post(
             "/api/v1/auth/refresh/", {"refresh": refresh}, format="json"
         )
@@ -352,3 +357,146 @@ class CredentialThrottleTests(APITestCase):
         ]
 
         self.assertIn(429, statuses, f"password reset was never throttled: {statuses}")
+
+
+class RefreshCookieTests(APITestCase):
+    """
+    The refresh token must never reach JavaScript.
+
+    It is issued as an httpOnly cookie, so an XSS can at worst steal the
+    15-minute access token from memory — not a week-long session. These tests
+    pin that contract end to end: issue, use, rotate, revoke.
+    """
+
+    PASSWORD = "S3cure!Passw0rd"
+
+    def setUp(self):
+        self.user = User.objects.create_user("cookie@example.com", self.PASSWORD)
+        self.cookie_name = settings.AUTH_COOKIE_NAME
+
+    def login(self):
+        return self.client.post(
+            LOGIN, {"email": self.user.email, "password": self.PASSWORD}, format="json"
+        )
+
+    # -- Issuing ------------------------------------------------------------
+
+    def test_login_does_not_return_the_refresh_token_in_the_body(self):
+        response = self.login()
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("access", response.data)
+        self.assertIn("user", response.data)
+        self.assertNotIn("refresh", response.data)
+
+    def test_login_sets_an_httponly_refresh_cookie(self):
+        self.login()
+        cookie = self.client.cookies[self.cookie_name]
+
+        self.assertTrue(cookie.value)
+        self.assertTrue(cookie["httponly"])
+        self.assertEqual(cookie["samesite"], settings.AUTH_COOKIE_SAMESITE)
+        self.assertEqual(cookie["path"], settings.AUTH_COOKIE_PATH)
+
+    def test_cookie_lifetime_matches_the_refresh_token_lifetime(self):
+        self.login()
+        expected = int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds())
+        self.assertEqual(self.client.cookies[self.cookie_name]["max-age"], expected)
+
+    # -- Using --------------------------------------------------------------
+
+    def test_refresh_works_from_the_cookie_with_an_empty_body(self):
+        self.login()
+        response = self.client.post("/api/v1/auth/refresh/", {}, format="json")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("access", response.data)
+
+    def test_refresh_never_returns_the_rotated_token_in_the_body(self):
+        """Rotation happens, but the replacement goes back into the cookie."""
+        self.login()
+        first = self.client.cookies[self.cookie_name].value
+
+        response = self.client.post("/api/v1/auth/refresh/", {}, format="json")
+        self.assertNotIn("refresh", response.data)
+
+        rotated = self.client.cookies[self.cookie_name].value
+        self.assertTrue(rotated)
+        self.assertNotEqual(rotated, first)
+
+    def test_rotated_token_makes_the_previous_one_unusable(self):
+        self.login()
+        original = self.client.cookies[self.cookie_name].value
+        self.client.post("/api/v1/auth/refresh/", {}, format="json")
+
+        # Drop the (valid, rotated) cookie first: `read_refresh_token` prefers
+        # the cookie over the body, so leaving it in place would just refresh
+        # successfully and prove nothing about the old token.
+        del self.client.cookies[self.cookie_name]
+
+        replayed = self.client.post(
+            "/api/v1/auth/refresh/", {"refresh": original}, format="json"
+        )
+        self.assertEqual(replayed.status_code, 401)
+
+    def test_refresh_without_a_cookie_or_body_is_unauthorized(self):
+        response = self.client.post("/api/v1/auth/refresh/", {}, format="json")
+        self.assertEqual(response.status_code, 401)
+
+    def test_the_access_token_actually_authenticates(self):
+        access = self.login().data["access"]
+        response = self.client.get(
+            "/api/v1/auth/me/", HTTP_AUTHORIZATION=f"Bearer {access}"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["email"], self.user.email)
+
+    def test_body_fallback_still_works_for_non_browser_clients(self):
+        """Mobile and CLI clients have no cookie jar, so they post the token."""
+        self.login()
+        token = self.client.cookies[self.cookie_name].value
+        del self.client.cookies[self.cookie_name]
+
+        response = self.client.post(
+            "/api/v1/auth/refresh/", {"refresh": token}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+
+    # -- Revoking -----------------------------------------------------------
+
+    def test_logout_blacklists_the_cookie_token_and_clears_it(self):
+        access = self.login().data["access"]
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+
+        response = self.client.post("/api/v1/auth/logout/", {}, format="json")
+        self.assertEqual(response.status_code, 205)
+
+        self.assertTrue(BlacklistedToken.objects.filter(token__user=self.user).exists())
+        # An empty value on the response is how a cookie is deleted.
+        self.assertEqual(self.client.cookies[self.cookie_name].value, "")
+
+    def test_refresh_after_logout_is_rejected(self):
+        access = self.login().data["access"]
+        token = self.client.cookies[self.cookie_name].value
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+        self.client.post("/api/v1/auth/logout/", {}, format="json")
+
+        response = self.client.post(
+            "/api/v1/auth/refresh/", {"refresh": token}, format="json"
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_password_reset_confirm_clears_the_cookie(self):
+        self.login()
+        # The reset token hash covers last_login, which the login above just
+        # moved on. Re-read the row or the link is built from stale state and
+        # is rejected as invalid.
+        self.user.refresh_from_db()
+        uid, token = build_reset_credentials(self.user)
+
+        response = self.client.post(
+            CONFIRM,
+            {"uid": uid, "token": token, "password": NEW, "password_confirm": NEW},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.client.cookies[self.cookie_name].value, "")

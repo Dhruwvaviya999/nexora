@@ -27,7 +27,7 @@ assistant** doing RAG over the workspace's own documents.
 | Realtime | Django Channels + Redis · polling fallback |
 | Jobs | Celery + Redis · falls back to inline |
 | AI | sentence-transformers (384-dim) · Gemini / OpenAI / Ollama |
-| Deploy | Docker compose (5 services) · GitHub Actions CI |
+| Deploy | Docker compose (6 services, incl. `beat`) · GitHub Actions CI |
 
 ---
 
@@ -35,7 +35,7 @@ assistant** doing RAG over the workspace's own documents.
 
 ```
 src/
-├── proxy.ts            edge route guard (cookie presence only)
+├── proxy.ts            edge route guard (session marker, all 12 route trees)
 ├── config/env.ts       zod-validated NEXT_PUBLIC_API_URL
 ├── app/
 │   ├── layout.tsx      html + <Providers>
@@ -51,7 +51,7 @@ src/
 │   ├── api/client.ts   ⭐ JWT · single-flight refresh · errors
 │   ├── api/*.ts        14 typed endpoint files
 │   ├── constants.ts    ⭐ API_ROUTES · ROUTES · STORAGE_KEYS
-│   └── auth/token-storage.ts   cookies
+│   └── auth/token-storage.ts   access token in MEMORY + session marker
 ├── providers/   auth-provider · workspace-provider
 └── types/       14 hand-mirrored serializer shapes
 ```
@@ -96,7 +96,7 @@ backend/
 | Projects | CRUD · `archive` · `restore` |
 | Tasks | CRUD |
 | **Handovers** | CRUD · **`review`** · `export` (PDF) |
-| Documents | CRUD (multipart) · `reindex` |
+| Documents | CRUD (multipart) · `reindex` · **`download`** (authenticated file stream) |
 | Comments | CRUD · `reply` |
 | Notifications | list · `read` · `read-all` · `unread-count` |
 | Activities | list · `export` (CSV) |
@@ -112,16 +112,21 @@ Every list: `{count, next, previous, results}`, page size **20**, plus
 ## Authentication
 
 ```
-login → {access(15m), refresh(7d), user}
-      → cookies (NOT httpOnly — so proxy.ts can read them)
+login → body: {access(15m), user}   → access token held in MEMORY only
+      → Set-Cookie: nexora_refresh  → httpOnly, Secure, SameSite, path-scoped
       → Authorization: Bearer on every request
-      → 401 → single-flight refresh → retry once
-      → refresh rotates + blacklists the old token
-      → logout blacklists + clears + queryClient.clear()
+      → 401 → single-flight refresh (empty body + credentials:include) → retry once
+      → rotation writes the new refresh straight back to the cookie
+      → reload → access re-minted from the cookie during bootstrap
+      → logout blacklists from the cookie, clears it, + queryClient.clear()
 ```
 
-**Three guards:** `proxy.ts` (cookie presence) → `(app)/layout.tsx`
-(`useAuth`) → **DRF permissions (the only real boundary)**.
+`nexora.session` = a marker cookie containing the literal `"1"`, **no secret** —
+it exists only because `proxy.ts` runs on the frontend origin and cannot see a
+cookie scoped to the API origin.
+
+**Three guards:** `proxy.ts` (marker presence, all 12 route trees) →
+`(app)/layout.tsx` (`useAuth`) → **DRF permissions (the only real boundary)**.
 
 **Roles:** owner > admin > manager > member.
 `REVIEWER_ROLES = (owner, admin, manager)` — review handovers.
@@ -216,7 +221,8 @@ suppressed during workspace delete to avoid FK violations.
 | Chat history | 10 turns |
 | Throttles | login 10/min · register 5/h · reset 5/h · AI 30/h |
 | Tables / pages / apps | 19 / 37 / 15 |
-| Tests | 93 backend methods · 6 frontend files |
+| Max upload | 25 MB, extension allow-list |
+| Tests | **201** backend methods · **7** frontend files (45 tests) |
 
 ---
 
@@ -236,17 +242,26 @@ suppressed during workspace delete to avoid FK violations.
 
 ---
 
-## Known weaknesses — own them first
+## Recently fixed — lead with these
 
-1. **Tokens not httpOnly** — deliberate, for the edge guard. Fix: backend-set
-   httpOnly refresh cookie + access token in memory.
-2. **Media unserveable in production** — `/media/` only served when `DEBUG=True`.
-3. **Document list N+1** — 41 queries for 20 rows. Fix: `annotate` + `Prefetch`.
-4. **No `CONN_MAX_AGE`** — a new DB connection per request.
-5. **No `completed_at`** — analytics infers the week from `updated_at`.
-6. **Empty test files** — tasks, projects, comments, mentions, documents, common.
-7. **Two pending handovers per task** possible — no constraint.
-8. **No error boundary** — failed fetches show infinite spinners.
+1. **httpOnly refresh cookie** — access token memory-only; edge guard reads a
+   value-less marker. XSS blast radius: 15 minutes, not 7 days.
+2. **Authenticated document download** — `/media/` was an unauthenticated
+   cross-tenant read *and* 404'd in production. Both closed by one endpoint.
+3. **Upload validation** — 25 MB cap + extension allow-list + forced attachment.
+4. **Error boundaries** — 3 boundaries + `isError` on 8 pages.
+5. **Celery beat** — nothing pruned the JWT table before; 4 nightly tasks now.
+6. **Tests 93 → 201** — no empty test files left. They found a real bug:
+   uploads without a title always returned 400.
+
+## Still open — own these too
+
+1. **No `CONN_MAX_AGE`** — a new DB connection per request.
+2. **Document list N+1** — 41 queries for 20 rows.
+3. **No `completed_at`** — analytics infers the week from `updated_at`.
+4. **Two pending handovers per task** possible — no constraint.
+5. **No logging config / error tracking** — the biggest remaining gap.
+6. **`apps/ai` has no tests at all.**
 
 ---
 

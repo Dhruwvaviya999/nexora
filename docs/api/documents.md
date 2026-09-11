@@ -26,7 +26,7 @@ Multipart for uploads, JSON for metadata-only edits.
 ```json
 { "id": "<uuid>", "workspace": "<uuid>", "project": "<uuid>|null",
   "title": "Q3 runbook.pdf", "description": "",
-  "file_url": "http://localhost:8000/media/documents/<ws>/Q3%20runbook.pdf",
+  "file_url": "http://localhost:8000/api/v1/documents/<uuid>/download/",
   "file_type": "application/pdf", "file_size": 284913,
   "embedding_status": "completed", "chunk_count": 37,
   "uploaded_by": { ...UserSerializer... },
@@ -41,13 +41,13 @@ Multipart for uploads, JSON for metadata-only edits.
 def get_file_url(self, obj):
     if not obj.file: return None
     request = self.context.get("request")
-    return request.build_absolute_uri(obj.file.url) if request else obj.file.url
+    path = reverse("v1:documents:document-download", kwargs={"pk": obj.pk})
+    return request.build_absolute_uri(path) if request else path
 ```
 
-> **Production caveat.** `/media/` is served by Django **only when `DEBUG=True`**
-> (`config/urls.py:54-55`). With no object store and no reverse proxy configured,
-> `file_url` 404s in production. See
-> [22-production-deployment.md](../22-production-deployment.md).
+`file_url` points at the **authenticated download endpoint**, never a raw
+`/media/` path. A public media URL would be an unauthenticated cross-tenant read
+*and* would 404 in production, where Django does not serve `/media/`.
 
 ### The two expensive fields
 
@@ -123,8 +123,20 @@ if not validated_data.get("title"):
 | `file` present on create | `400 {"file": ["A file is required."]}` |
 | Workspace membership | `403` from `_require_membership` |
 
-> **Not validated:** file size, MIME type, or content. Any file type of any size
-> is accepted. See [18-security.md](../18-security.md).
+**Upload validation** (`DocumentSerializer.validate_file`):
+
+| Check | Failure |
+|---|---|
+| Size ≤ `MAX_UPLOAD_SIZE` (25 MB default) | `400 {"file": ["File is too large (31.2 MB). The limit is 25 MB."]}` |
+| Extension in `ALLOWED_UPLOAD_EXTENSIONS` | `400 {"file": ["Unsupported file type '.html'. Allowed: ..."]}` |
+
+Allowed: `.pdf .docx .txt .md .markdown` (text-extractable, these feed the RAG
+pipeline) plus `.csv .xlsx .pptx .png .jpg .jpeg .gif .webp` (stored, not
+embedded). `.html`, `.svg` and `.exe` are rejected — an HTML file served back
+from the API origin would be a stored-XSS vector.
+
+`DATA_UPLOAD_MAX_MEMORY_SIZE` is derived from `MAX_UPLOAD_SIZE`, so an
+oversized body is refused before being fully buffered.
 
 **Storage:** `document_upload_path` → `documents/<workspace_id>/<filename>` under
 `MEDIA_ROOT`. In Docker that is a named volume shared with the worker.
@@ -158,6 +170,46 @@ Editable: `title`, `description`, `project`.
 
 **Important:** editing metadata does **not** re-embed, because the signal fires
 only on `created`. Replacing the file also does not re-embed — use `reindex`.
+
+---
+
+## `GET /documents/{id}/download/`
+
+**The only way to read an uploaded file.**
+
+| | |
+|---|---|
+| **Auth** | member — `get_object()` applies the workspace-membership filter, so a non-member gets **404** |
+| **Response** | `200` with the file streamed via `FileResponse` |
+| **Headers** | `Content-Disposition: attachment; filename="..."`, `X-Content-Type-Options: nosniff`, `Content-Length` |
+
+Why a view rather than a static path, from the docstring:
+
+1. **Tenancy.** A raw media path is an unauthenticated read — anyone holding or
+   guessing the URL could fetch another workspace's file, bypassing every
+   permission check in the project.
+2. **Deployment.** `django.conf.urls.static` only serves media while `DEBUG` is
+   on. A view works identically with `DEBUG=False` and with S3.
+
+Always an attachment: an uploaded `.html` or `.svg` served inline would execute
+on the API's origin. The content type is guessed from the **extension**, not
+from the stored `file_type`, which is client-supplied and untrustworthy. The
+filename is stripped of quotes and newlines so a crafted title cannot inject
+response headers.
+
+`404` if the document has no file, or if the row exists but the stored file is
+missing.
+
+**Client side** — must be fetched with the bearer token, so a plain `<a href>`
+will not work:
+
+```ts
+await downloadFile(API_ROUTES.documents.download(doc.id), doc.title);
+```
+
+`lib/api/download.ts` obtains an access token up front (minting one from the
+refresh cookie after a reload), retries once on a 401, reads the blob and
+triggers the browser download.
 
 ---
 
@@ -228,5 +280,7 @@ There is also a management command for bulk work:
 | `embedding_status: "pending"` forever | No Celery worker consuming, and the broker was reachable enough that the inline fallback did not trigger |
 | `embedding_status: "failed"` | Read `EmbeddingJob.error` — it holds the exception text (2000 chars) |
 | `chunk_count: 0` with status `completed` | Extraction produced no text — most often a scanned PDF (**no OCR**) |
-| `file_url` 404s | Production media serving is not configured |
+| `404` on download | Not a workspace member, or the stored file is missing from storage |
+| `400 {"file": ["Unsupported file type..."]}` | Extension not in the allow-list |
+| `400 {"file": ["File is too large..."]}` | Over `MAX_UPLOAD_SIZE` |
 | Upload appears to hang locally | Inline embedding downloading the 90 MB model on first use |

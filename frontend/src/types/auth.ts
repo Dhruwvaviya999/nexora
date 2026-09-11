@@ -11,19 +11,24 @@ export interface AuthUser {
   updated_at: string;
 }
 
-/** JWT pair returned by the login endpoint. */
-export interface TokenPair {
+/**
+ * POST /auth/login/ response.
+ *
+ * There is no `refresh` field: the backend moves the refresh token into an
+ * httpOnly cookie so page script can never read it. Only the short-lived
+ * access token reaches JavaScript, and it is kept in memory.
+ */
+export interface LoginResponse {
   access: string;
-  refresh: string;
-}
-
-/** POST /auth/login/ response. */
-export interface LoginResponse extends TokenPair {
   user: AuthUser;
 }
 
-/** POST /auth/refresh/ response (ROTATE_REFRESH_TOKENS returns a new refresh too). */
+/**
+ * POST /auth/refresh/ response.
+ *
+ * Rotation is on, but the rotated refresh token is written straight back to
+ * the httpOnly cookie — it never appears in the body.
+ */
 export interface RefreshResponse {
   access: string;
-  refresh?: string;
 }

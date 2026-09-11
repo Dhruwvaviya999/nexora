@@ -26,16 +26,23 @@ import { useAuth } from "@/providers/auth-provider";
 import { getErrorMessage } from "@/lib/api/errors";
 import { ROUTES } from "@/lib/constants";
 import type { WorkspaceValues } from "@/lib/validations/workspace";
+import { ErrorState } from "@/components/shared/error-state";
 
 export default function WorkspaceSettingsPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
 
   const { user } = useAuth();
-  const { data: workspace, isLoading } = useWorkspace(id);
+  const { data: workspace, isLoading, isError, error, refetch } = useWorkspace(id);
   const { data: members } = useWorkspaceMembers(id);
   const updateWorkspace = useUpdateWorkspace(id);
   const deleteWorkspace = useDeleteWorkspace();
+
+  // A failed fetch used to be indistinguishable from a slow one and
+  // spun forever; surface the real error instead.
+  if (isError) {
+    return <ErrorState error={error} onRetry={() => refetch()} />;
+  }
 
   if (isLoading || !workspace) {
     return (

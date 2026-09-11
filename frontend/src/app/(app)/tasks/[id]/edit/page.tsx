@@ -19,11 +19,18 @@ import { ROUTES } from "@/lib/constants";
 import type { TaskValues } from "@/lib/validations/task";
 
 import { PageContainer } from "@/components/layout/page-container";
+import { ErrorState } from "@/components/shared/error-state";
 export default function EditTaskPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { data: task, isLoading } = useTask(id);
+  const { data: task, isLoading, isError, error, refetch } = useTask(id);
   const updateTask = useUpdateTask(id);
+
+  // A failed fetch used to be indistinguishable from a slow one and
+  // spun forever; surface the real error instead.
+  if (isError) {
+    return <ErrorState error={error} onRetry={() => refetch()} />;
+  }
 
   if (isLoading || !task) {
     return (

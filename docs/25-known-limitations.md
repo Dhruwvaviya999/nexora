@@ -9,96 +9,99 @@ not difficulty.
 
 ## Summary
 
-| # | Item | Severity | Area |
+**Six items from the original list have been fixed** (plus one new finding that
+raising them surfaced). The table marks status.
+
+| # | Item | Severity | Status |
 |---|---|---|---|
-| 1 | Non-httpOnly token cookies | 🔴 High | Security |
-| 2 | Uploaded files unserveable in production | 🔴 High | Deployment |
-| 3 | No file upload size/type limits | 🟠 Medium-High | Security |
-| 4 | No error boundary; failed fetches show infinite spinners | 🟠 Medium-High | Reliability |
-| 5 | Document list N+1 (2 queries per row) | 🟠 Medium-High | Performance |
-| 6 | No database connection pooling | 🟠 Medium-High | Performance |
-| 7 | Five backend test files are empty | 🟠 Medium | Testing |
-| 8 | No `completed_at` — analytics approximates | 🟠 Medium | Correctness |
-| 9 | Two pending handovers per task are possible | 🟠 Medium | Business logic |
-| 10 | `Comment.author` and `Workspace.owner` cascade on user delete | 🟠 Medium | Data integrity |
-| 11 | Edge guard covers only 2 of 12 route trees | 🟠 Medium | Security/UX |
-| 12 | JWT blacklist never pruned; no scheduler at all | 🟠 Medium | Operations |
-| 13 | No logging config, no error tracking | 🟠 Medium | Operations |
-| 14 | Dashboard fires 15+ queries | 🟡 Low-Medium | Performance |
-| 15 | Duplicated role logic in three places | 🟡 Low-Medium | Maintainability |
-| 16 | Frontend types hand-mirrored from serializers | 🟡 Low-Medium | Maintainability |
-| 17 | Filter state not in the URL | 🟡 Low | UX |
-| 18 | Slug generation has a check-then-act race | 🟡 Low | Correctness |
-| 19 | Dead fields: `start_date`, `estimated_hours`, `labels`, `first_name`/`last_name` | 🟡 Low | Cleanliness |
-| 20 | Documentation drift (5 items) | 🟡 Low | Docs |
-| 21 | Unused code: `stream()`, `IsWorkspaceAdmin`, `gunicorn`, `TASK_UPDATED` | 🟢 Cosmetic | Cleanliness |
+| 1 | Non-httpOnly token cookies | 🔴 | ✅ **Fixed** |
+| 2 | Uploaded files unserveable in production | 🔴 | ✅ **Fixed** |
+| 2b | Uploads publicly readable via `/media/` | 🔴 | ✅ **Fixed** (new finding) |
+| 3 | No file upload size/type limits | 🟠 | ✅ **Fixed** |
+| 4 | No error boundary; infinite spinners | 🟠 | ✅ **Fixed** |
+| 5 | Document list N+1 (2 queries per row) | 🟠 | Open |
+| 6 | No database connection pooling | 🟠 | Open |
+| 7 | Five backend test files empty | 🟠 | ✅ **Fixed** (six written) |
+| 7b | Upload without a title always 400'd | 🟠 | ✅ **Fixed** (found by the new tests) |
+| 8 | No `completed_at` — analytics approximates | 🟠 | Open |
+| 9 | Two pending handovers per task possible | 🟠 | Open |
+| 10 | `Comment.author` / `Workspace.owner` cascade | 🟠 | Open |
+| 11 | Edge guard covered 2 of 12 route trees | 🟠 | ✅ **Fixed** |
+| 12 | JWT blacklist never pruned; no scheduler | 🟠 | ✅ **Fixed** |
+| 13 | No logging config, no error tracking | 🟠 | Open |
+| 14 | Dashboard fires 15+ queries | 🟡 | Open |
+| 15 | Duplicated role logic in three places | 🟡 | Open |
+| 16 | Frontend types hand-mirrored | 🟡 | Open |
+| 17 | Filter state not in the URL | 🟡 | Open |
+| 18 | Slug check-then-act race | 🟡 | Open |
+| 19 | Dead fields | 🟡 | Open |
+| 20 | Documentation drift | 🟡 | Partly — these docs updated |
+| 21 | Unused code | 🟢 | Open |
+
+Fixed items are kept below with a short record of what changed, so the
+reasoning survives. Full detail for the security ones is in
+[18-security.md](18-security.md).
 
 ---
 
-## 1. 🔴 Non-httpOnly token cookies
+## ✅ Fixed
 
-**Where:** `frontend/src/lib/auth/token-storage.ts:12,18`
+### 1. Non-httpOnly token cookies
 
-Both tokens are set by JavaScript with `path=/; SameSite=Lax` — no `HttpOnly`, no
-`Secure`. Any XSS on the frontend origin reads both, and the refresh token is
-valid for 7 days.
+Refresh token moved into a backend-issued httpOnly cookie; access token is now
+memory-only. `proxy.ts` reads a value-less `nexora.session` marker instead of a
+credential. See [18-security.md § 3.1](18-security.md).
 
-**Why it exists:** so `src/proxy.ts` can read them server-side at the edge. The
-file documents the trade-off itself.
+### 2 / 2b. Uploads: unserveable in production, and publicly readable
 
-**Mitigating:** no `dangerouslySetInnerHTML` anywhere (verified), React escapes
-by default, and no user-supplied HTML rendering path exists.
+Both were the same root cause — `file_url` pointed at `MEDIA_URL`. It now points
+at `GET /documents/{id}/download/`, which applies the workspace-membership
+filter, streams the file, and forces `Content-Disposition: attachment`. Works
+identically with `DEBUG=False` and with S3 (`USE_S3=True`). WhiteNoise plus a
+`collectstatic` step in the Dockerfile fixes the unstyled-admin gap at the same
+time.
 
-**Fix:** backend sets an httpOnly refresh cookie on login; access token held in
-memory only; a refresh endpoint reads the cookie. This also removes the reason
-`proxy.ts` needs tokens. Meanwhile, add `; Secure` when the page is HTTPS — that
-part is a one-line change.
+**2b was not on the original list.** Fixing "files 404 in production" surfaced
+that they were *world-readable* in development — a cross-tenant read that
+bypassed every permission check.
 
----
+### 3. Upload size and type limits
 
-## 2. 🔴 Uploaded files are unserveable in production
+`DocumentSerializer.validate_file`: 25 MB cap (`MAX_UPLOAD_SIZE`) and an
+extension allow-list. `.html` / `.svg` / `.exe` rejected.
 
-**Where:** `backend/config/urls.py:54-55`
+### 4. No error boundary
 
-`/media/` is served only when `DEBUG=True`. In production `DEBUG` is `False`,
-`STORAGES` is the default `FileSystemStorage`, and the repository contains no
-Nginx config and no `django-storages` configuration.
+Added `app/error.tsx`, `app/(app)/error.tsx` (keeps the sidebar), and
+`app/global-error.tsx` for root-layout failures. Eight pages that did
+`if (isLoading || !data) return <Spinner/>` now branch on `isError` first and
+render a shared `<ErrorState/>` with a retry button.
 
-**Result:** `DocumentSerializer.get_file_url` returns a URL that 404s.
+### 7. Empty test files
 
-**Fix:** `django-storages` + S3 (the `Document` model docstring already
-anticipates this), or a reverse proxy serving `/media/` from the shared volume.
+Six written: `common` (tenancy + role matrix + maintenance tasks), `tasks`,
+`projects`, `comments`, `mentions`, `documents`. See
+[26-testing.md](26-testing.md).
 
----
+### 7b. Upload without a title always returned 400
 
-## 3. 🟠 No upload restrictions
+Found by the new tests. `Document.title` has no `blank=True`, so DRF inferred
+`required=True` — which made the filename fallback in `create()` unreachable.
+The frontend only sends a title when the user types one, so those uploads had
+been failing. Fixed with `extra_kwargs`.
 
-No size limit (`DATA_UPLOAD_MAX_MEMORY_SIZE` / `FILE_UPLOAD_MAX_MEMORY_SIZE` are
-not overridden), no MIME whitelist, no `Content-Disposition` on serve. Only
-*extraction* is restricted by extension.
+### 11. Edge guard coverage
 
-**Fix:** a `validate_file` on `DocumentSerializer` checking size and extension;
-serve with `Content-Disposition: attachment`.
+All twelve authenticated route trees now matched, not two.
 
----
+### 12. No scheduler
 
-## 4. 🟠 No error boundary; failed fetches show infinite spinners
-
-**Where:** no `error.tsx` anywhere in `frontend/src/app/`, no React error
-boundary component, and detail pages use:
-
-```ts
-if (isLoading || !handover) return <Loader2 className="animate-spin" />;
-```
-`app/(app)/handovers/[id]/page.tsx:72-78`
-
-A failed fetch is indistinguishable from a slow one, and a render-time exception
-blanks the page entirely.
-
-**Fix:** add `app/error.tsx` and `app/(app)/error.tsx`, and branch on `isError`
-in detail pages. Small change, large perceived-reliability improvement.
+`CELERY_BEAT_SCHEDULE` + a `beat` compose service + four idempotent pruning
+tasks.
 
 ---
+
+## Still open
 
 ## 5. 🟠 Document list N+1
 
@@ -114,7 +117,6 @@ The same pattern (cheaper, but present) affects `member_count`, `task_count` and
 `reply_count`.
 
 ---
-
 ## 6. 🟠 No connection pooling
 
 `CONN_MAX_AGE` is unset — verified — so Django's default `0` applies and every
@@ -123,34 +125,6 @@ request opens a new PostgreSQL connection. No PgBouncer.
 **Fix:** `CONN_MAX_AGE = 60`. One line.
 
 ---
-
-## 7. 🟠 Five backend test files are empty
-
-Confirmed with `wc -l`:
-
-```
-apps/comments/tests.py    0 lines
-apps/documents/tests.py   0 lines
-apps/mentions/tests.py    0 lines
-apps/projects/tests.py    0 lines
-apps/tasks/tests.py       0 lines
-apps/common/tests.py      0 lines
-```
-
-**Tasks and projects are the two most-used models in the product, and neither has
-a dedicated test file.** They get incidental coverage from
-`apps/core/tests_smoke.py`, which walks every API area, but there is nothing
-testing e.g. that a task's workspace is derived from its project, or that a
-non-member assignee is rejected.
-
-`comments` and `mentions` are worse: the mention-parsing regex and the idempotent
-sync are subtle logic with **zero** direct tests.
-
-**Fix:** the highest-value missing tests are listed in
-[26-testing.md](26-testing.md).
-
----
-
 ## 8. 🟠 No `completed_at` column
 
 **Where:** `backend/apps/core/views.py:167-169` (the docstring admits it)
@@ -162,7 +136,6 @@ months ago moves it into the current week's bar.
 on the transition out. One migration plus a serializer/model hook.
 
 ---
-
 ## 9. 🟠 Two pending handovers per task are possible
 
 Nothing in `HandoverSerializer` or `HandoverViewSet` checks for an existing
@@ -176,7 +149,6 @@ in the workspace can hand over anyone's task.
 partial unique constraint.
 
 ---
-
 ## 10. 🟠 Cascade deletes on user
 
 | FK | Behaviour | Problem |
@@ -192,37 +164,6 @@ author shape). For workspaces, either block deletion of a user who owns
 workspaces, or force an ownership transfer first.
 
 ---
-
-## 11. 🟠 Edge guard coverage
-
-`src/proxy.ts` matcher covers `/dashboard/*`, `/workspaces/*`, `/login`,
-`/register`. Ten other authenticated route trees — `/tasks`, `/projects`,
-`/handovers`, `/documents`, `/ai/*`, `/activity`, `/search`, `/settings`,
-`/notifications`, `/invitations` — rely only on the client-side layout gate.
-
-No data leaks (no token means every API call 401s), but the experience is a
-flash-then-redirect instead of a clean edge redirect, and the protection story is
-inconsistent.
-
-**Fix:** extend the matcher, or invert it to everything-except-public.
-
----
-
-## 12. 🟠 No scheduler; blacklist grows forever
-
-Verified: **no Celery beat schedule exists anywhere in the project code.**
-
-`token_blacklist_outstandingtoken` gains a row on every refresh — with 15-minute
-tokens, hundreds per active user per week — and it is read on every token
-validation. SimpleJWT ships `manage.py flushexpiredtokens`; nothing runs it.
-
-Also unswept: expired invitations (status only flips on an accept attempt), old
-`EmbeddingJob` rows, and `ai_searchhistory`.
-
-**Fix:** add a `beat` service and schedule `flushexpiredtokens` daily.
-
----
-
 ## 13. 🟠 No logging config, no error tracking
 
 Verified: no `LOGGING` dict anywhere in `backend/config/`. No Sentry, no
@@ -232,7 +173,6 @@ logs.
 **Fix:** a `LOGGING` config with JSON output, plus an error tracker.
 
 ---
-
 ## 14. 🟡 Dashboard query count
 
 Ten `.count()` calls plus four list queries, on the first screen every user
@@ -240,7 +180,6 @@ loads. Collapsible into two `aggregate()` calls. See
 [19-performance-scalability.md](19-performance-scalability.md).
 
 ---
-
 ## 15. 🟡 Duplicated role logic
 
 `IsWorkspaceAdmin` and `IsWorkspaceManager` exist in
@@ -258,7 +197,6 @@ Behaviour is correct and consistent today. The risk is drift: change
 helper for the AI case where the workspace arrives in the body.
 
 ---
-
 ## 16. 🟡 Frontend types are hand-mirrored
 
 `frontend/src/types/*.ts` restate the DRF serializers by hand. There is no
@@ -272,7 +210,6 @@ drift.
 prebuild step.
 
 ---
-
 ## 17. 🟡 Filter state is not in the URL
 
 Status, priority, assignee, search text and page number live in `useState`.
@@ -281,7 +218,6 @@ Filtered views cannot be bookmarked or shared, and a refresh resets them.
 **Fix:** `useSearchParams` + `router.replace` on filter change.
 
 ---
-
 ## 18. 🟡 Slug check-then-act race
 
 `_generate_unique_slug` queries, then saves. Two concurrent creates with the same
@@ -291,7 +227,6 @@ failure mode is an uncaught `IntegrityError` → 500.
 **Fix:** a bounded retry loop around save on `IntegrityError`.
 
 ---
-
 ## 19. 🟡 Dead fields
 
 | Field | Status |
@@ -309,7 +244,6 @@ also arguably correct not to implement it, since the vector column dimension is
 fixed database-wide.
 
 ---
-
 ## 20. 🟡 Documentation drift
 
 | Claim | Reality |
@@ -325,7 +259,6 @@ fixed database-wide.
 None affect behaviour. All would confuse a new developer.
 
 ---
-
 ## 21. 🟢 Unused code
 
 | Item | Note |
@@ -340,20 +273,18 @@ None affect behaviour. All would confuse a new developer.
 
 ## What to fix first
 
-If you had one day:
+The original one-day list is now mostly done. What remains, in order:
 
-1. `CONN_MAX_AGE = 60` (5 minutes)
-2. `; Secure` on cookies when HTTPS (5 minutes)
-3. Extend the `proxy.ts` matcher (10 minutes)
-4. `app/error.tsx` + `isError` branches (1 hour)
-5. Fix the document N+1 with `annotate` + `Prefetch` (1 hour)
-6. Collapse the dashboard counts into aggregates (1 hour)
-7. Upload size + extension validation (30 minutes)
-8. Write `apps/tasks/tests.py` and `apps/projects/tests.py` (2 hours)
+1. **`CONN_MAX_AGE = 60`** — 5 minutes, and it is the first thing that breaks
+   under load.
+2. **Document list N+1** — `annotate` + `Prefetch`, 41 queries to 3. Lock it in
+   with `assertNumQueries`, which nothing currently uses.
+3. **Collapse the dashboard's 10 counts** into two `aggregate()` calls.
+4. **`LOGGING` config + an error tracker** — without it, none of the controls
+   added in this pass can be observed failing.
+5. **Wrap `HandoverViewSet.review` in a transaction**, and add the missing
+   "one pending handover per task" rule.
+6. **Add `completed_at`** so analytics stops approximating.
 
-That list removes both High-severity performance items, the worst reliability
-gap, two of the security items, and the most conspicuous testing hole.
-
----
-
-**Next:** [26 — Testing](26-testing.md)
+Items 1–3 are under two hours and halve the query count of the two most-loaded
+pages.

@@ -3,15 +3,40 @@ import { NextResponse, type NextRequest } from "next/server";
 import { STORAGE_KEYS } from "@/lib/constants";
 
 /**
- * Route guard, run for every matched request before it reaches a route.
+ * Route guard, run at the edge for every matched request before it reaches a
+ * route.
  *
- * Reads the access-token cookie (set client-side after login) to gate routes.
- * It only checks *presence*, not validity — the API client handles expiry via
- * silent refresh, and the protected layout redirects if the session is truly
- * dead. This keeps the guard fast and avoids verifying JWTs here.
+ * It reads `nexora.session` — a marker cookie whose value is the literal
+ * string "1". It is **not** a credential and contains no token. The real
+ * refresh token is an httpOnly cookie scoped to the API's origin, which this
+ * middleware (running on the frontend origin) cannot see and does not need.
+ *
+ * The check is presence-only and is purely a UX optimisation: it avoids
+ * rendering an app shell for someone obviously signed out, and bounces a
+ * signed-in visitor off the login page. Forging the cookie gains an attacker
+ * nothing — the page renders, every API call 401s, and the protected layout
+ * redirects straight back out. **Authorisation is enforced by the API, not
+ * here.**
  */
 
-const PROTECTED_PREFIXES = ["/dashboard", "/workspaces"];
+// Every authenticated route tree. Previously only /dashboard and /workspaces
+// were matched, so ten other protected trees rendered a shell and then
+// redirected — a visible flash, and an inconsistent story about what is
+// guarded.
+const PROTECTED_PREFIXES = [
+  "/dashboard",
+  "/workspaces",
+  "/projects",
+  "/tasks",
+  "/handovers",
+  "/documents",
+  "/ai",
+  "/activity",
+  "/search",
+  "/settings",
+  "/notifications",
+  "/invitations",
+];
 
 // Signing in makes these pages pointless, so a session bounces off them.
 //
@@ -23,22 +48,19 @@ const AUTH_PAGES = ["/login", "/register"];
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const hasToken = Boolean(
-    request.cookies.get(STORAGE_KEYS.accessToken)?.value ||
-      request.cookies.get(STORAGE_KEYS.refreshToken)?.value
-  );
+  const hasSession = request.cookies.get(STORAGE_KEYS.sessionFlag)?.value === "1";
 
   const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
   const isAuthPage = AUTH_PAGES.some((p) => pathname.startsWith(p));
 
-  if (isProtected && !hasToken) {
+  if (isProtected && !hasSession) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
   }
 
-  if (isAuthPage && hasToken) {
+  if (isAuthPage && hasSession) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);
@@ -48,5 +70,20 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/workspaces/:path*", "/login", "/register"],
+  matcher: [
+    "/dashboard/:path*",
+    "/workspaces/:path*",
+    "/projects/:path*",
+    "/tasks/:path*",
+    "/handovers/:path*",
+    "/documents/:path*",
+    "/ai/:path*",
+    "/activity/:path*",
+    "/search/:path*",
+    "/settings/:path*",
+    "/notifications/:path*",
+    "/invitations/:path*",
+    "/login",
+    "/register",
+  ],
 };

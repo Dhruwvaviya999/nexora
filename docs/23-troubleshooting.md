@@ -89,7 +89,9 @@ Expect `access-control-allow-origin: http://localhost:3000`.
 
 **Cause:** cookies were not set, or `/auth/me/` failed.
 **Diagnose:**
-1. DevTools → Application → Cookies → look for `nexora.accessToken`.
+1. DevTools → Application → Cookies → look for `nexora_refresh` (HttpOnly, on
+   the API origin) and `nexora.session=1` (frontend origin). The access token is
+   in memory and will **not** appear here — that is expected.
 2. Network → check the `/auth/me/` response.
 **Look at:** `token-storage.ts:37-40`, `auth-provider.tsx:36-56`.
 **Common cause:** the login response did not contain `access`/`refresh` — check

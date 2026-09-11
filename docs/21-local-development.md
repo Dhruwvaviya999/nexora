@@ -51,6 +51,7 @@ so the schema is created automatically.
 | `redis` | `localhost:6379` | AOF persistence so a restart does not drop queued jobs |
 | `web` | `http://localhost:8000/api/v1` | uvicorn, 3 workers, healthchecked on `/api/v1/health/` |
 | `worker` | — | `celery -A config worker --concurrency=2` |
+| `beat` | — | `celery -A config beat` — nightly maintenance. Exactly **one** per deployment |
 | `frontend` | `http://localhost:3000` | `next start` |
 
 Emails print to the `web` container log unless `EMAIL_HOST` is set.
@@ -239,13 +240,16 @@ Work through these in order — each one proves a different layer.
 | 3 | Admin | `http://localhost:8000/admin/` | Login page |
 | 4 | Frontend serving | `http://localhost:3000` | Landing page |
 | 5 | Auth end to end | Register, then sign in | Redirect to `/dashboard` |
-| 6 | Cookies set | DevTools → Application → Cookies | `nexora.accessToken`, `nexora.refreshToken` |
+| 6 | Cookies set | DevTools → Application → Cookies | `nexora_refresh` marked **HttpOnly** on the API origin, and `nexora.session=1` on the frontend origin. **No access or refresh token should be readable by script** |
+| 6b | Session survives reload | Hard-refresh a signed-in page | Stays signed in — the access token is re-minted from the refresh cookie |
 | 7 | Tenancy works | Create a workspace | It appears in the sidebar switcher |
 | 8 | CRUD works | Create a project, then a task | Dashboard counters increase |
 | 9 | Signals work | `/activity` | `workspace.created`, `project.created`, `task.created` rows |
 | 10 | Realtime works | DevTools → Network → WS | `/ws/notifications/` open, first frame `{"type":"connected"}` |
 | 11 | Notifications work | Have a second user comment and @mention you | Bell badge increments without a refresh |
 | 12 | Uploads work | Upload a `.txt` or `.pdf` at `/documents/new` | Row created; `embedding_status` reaches `completed` |
+| 12b | Download is authenticated | Click Download on the document | File downloads; the URL is `/api/v1/documents/<id>/download/`, not `/media/` |
+| 12c | Upload limits work | Try a `.html` file | Rejected with "Unsupported file type" |
 | 13 | RAG works | `/ai/search` for a phrase from that document | The chunk comes back with a score |
 | 14 | LLM works | `/ai/chat` ask a question | An answer with sources — needs an API key |
 | 15 | Email works | Request a password reset | The email prints in the backend console |

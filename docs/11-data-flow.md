@@ -26,9 +26,11 @@ login-form.tsx onSubmit
               → check_password()
               → issue access + refresh, UPDATE last_login
               → data["user"] = UserSerializer(self.user).data
-          ← 200 {access, refresh, user}
+            → LoginView.post pops "refresh" into an httpOnly cookie
+          ← 200 {access, user} + Set-Cookie: nexora_refresh
       ← LoginResponse
-    → tokenStorage.set(access, refresh)   [cookies]
+    → tokenStorage.setAccess(access)      [memory only]
+       (refresh token arrives as an httpOnly cookie set by the server)
     → setUser(res.user)
   → toast.success + router.replace(next ?? "/dashboard")
 ```

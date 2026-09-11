@@ -1,9 +1,17 @@
 import { API_BASE_URL } from "@/lib/constants";
+import { ensureAccessToken } from "@/lib/api/client";
 import { tokenStorage } from "@/lib/auth/token-storage";
+import type { ApiError } from "@/types";
 
 /**
- * Fetch an authenticated binary endpoint (PDF/CSV) and trigger a browser
- * download. The JSON apiClient can't be used here — these responses are blobs.
+ * Fetch an authenticated binary endpoint (PDF/CSV/uploaded file) and trigger a
+ * browser download. The JSON apiClient can't be used here — these responses
+ * are blobs, not JSON.
+ *
+ * Mirrors the client's auth behaviour: it obtains an access token up front
+ * (minting one from the refresh cookie if memory is empty after a reload) and
+ * retries once on a 401, so an expired token no longer turns a download into a
+ * failure toast.
  */
 export async function downloadFile(
   path: string,
@@ -15,13 +23,29 @@ export async function downloadFile(
     if (value) search.append(key, value);
   }
   const qs = search.toString();
+  const url = `${API_BASE_URL}${path}${qs ? `?${qs}` : ""}`;
 
-  const access = tokenStorage.getAccess();
-  const response = await fetch(`${API_BASE_URL}${path}${qs ? `?${qs}` : ""}`, {
-    headers: access ? { Authorization: `Bearer ${access}` } : {},
-  });
+  const send = (token: string | null) =>
+    fetch(url, {
+      credentials: "include",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+
+  let response = await send(await ensureAccessToken());
+
+  // One transparent retry, matching apiClient's behaviour.
+  if (response.status === 401) {
+    tokenStorage.clear();
+    const refreshed = await ensureAccessToken();
+    if (refreshed) response = await send(refreshed);
+  }
+
   if (!response.ok) {
-    throw { status: response.status, message: "Download failed" };
+    const error: ApiError = {
+      status: response.status,
+      message: response.status === 404 ? "File not found" : "Download failed",
+    };
+    throw error;
   }
 
   // Prefer the server-provided filename when present.
@@ -30,12 +54,12 @@ export async function downloadFile(
   const filename = match?.[1] ?? fallbackName;
 
   const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
+  const objectUrl = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
-  anchor.href = url;
+  anchor.href = objectUrl;
   anchor.download = filename;
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
-  URL.revokeObjectURL(url);
+  URL.revokeObjectURL(objectUrl);
 }

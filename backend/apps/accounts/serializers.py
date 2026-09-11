@@ -73,9 +73,14 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
 
 
 class LogoutSerializer(serializers.Serializer):
-    """Refresh token to blacklist on logout."""
+    """Refresh token to blacklist on logout.
 
-    refresh = serializers.CharField()
+    Optional: browsers send the token in the httpOnly cookie and post an empty
+    body. Non-browser clients (mobile, CLI, tests) have no cookie jar, so they
+    pass it explicitly. The view resolves whichever is present.
+    """
+
+    refresh = serializers.CharField(required=False, allow_blank=True)
 
 
 class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):

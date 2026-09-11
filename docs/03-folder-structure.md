@@ -92,7 +92,7 @@ backend/
 | `email.py` | `send_templated_email()`, `queue_templated_email()`, `frontend_url()` |
 | `tasks.py` | `send_email_task` — Celery task with 3 retries and backoff |
 | `channels_auth.py` | `JWTAuthMiddleware` for WebSocket connections |
-| `tests.py` | **Empty file (0 lines).** |
+| `tests.py` | Tenant isolation, the role matrix, and the scheduled maintenance tasks (21 tests) |
 
 `migrations/` here contains only `__init__.py` — the abstract models create no
 tables.
@@ -143,8 +143,9 @@ urls.py         DefaultRouter registration
 `handovers/` adds `pdf.py` (reportlab export). `documents/` has no extra file but
 its `views.py` adds `parser_classes` for multipart upload and a `reindex` action.
 
-**Note:** `projects/tests.py`, `tasks/tests.py` and `documents/tests.py` are all
-**empty files (0 lines)**.
+Each also has a populated `tests.py` now — `projects` (12), `tasks` (15),
+`documents` (17), the last covering upload validation and the authenticated
+download endpoint.
 
 ---
 
@@ -298,7 +299,7 @@ own `layout.tsx` without appearing in the URL. `/login` is served by
 | `api/errors.ts` | `isApiError`, `getErrorMessage`, `applyFieldErrors` | every form |
 | `api/download.ts` | Authenticated blob download for PDF/CSV | handover detail, audit log |
 | `constants.ts` ⭐ | `API_ROUTES`, `ROUTES`, `STORAGE_KEYS`, enum label tables, `PAGE_SIZE` | client, proxy, hooks, pages, sidebar |
-| `auth/token-storage.ts` | Cookie read/write for the two tokens | client, auth-provider, socket, download |
+| `auth/token-storage.ts` | In-memory access token + the non-secret session marker. **Never touches the refresh token**, which is httpOnly | client, auth-provider, socket, download |
 | `query-client.ts` | `makeQueryClient()` with SaaS-tuned defaults | `app/providers.tsx` |
 | `validations/*.ts` (8) | Zod schemas mirroring backend rules | forms |
 | `realtime.ts` | Derives the `ws://`/`wss://` URL from `NEXT_PUBLIC_API_URL` | `use-notification-socket` |

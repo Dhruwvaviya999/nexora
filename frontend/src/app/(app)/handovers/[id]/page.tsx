@@ -30,6 +30,7 @@ import { REVIEWER_ROLES } from "@/types/workspace";
 import type { AuthUser } from "@/types/auth";
 
 import { PageContainer } from "@/components/layout/page-container";
+import { ErrorState } from "@/components/shared/error-state";
 function UserChip({ user, fallback }: { user: AuthUser | null; fallback: string }) {
   if (!user) return <span className="text-muted-foreground">{fallback}</span>;
   return (
@@ -64,10 +65,16 @@ export default function HandoverDetailPage() {
   const router = useRouter();
   const { user } = useAuth();
   const { activeWorkspace } = useWorkspaceContext();
-  const { data: handover, isLoading } = useHandover(id);
+  const { data: handover, isLoading, isError, error, refetch } = useHandover(id);
   const deleteHandover = useDeleteHandover();
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [exporting, setExporting] = React.useState(false);
+
+  // A failed fetch used to be indistinguishable from a slow one and
+  // spun forever; surface the real error instead.
+  if (isError) {
+    return <ErrorState error={error} onRetry={() => refetch()} />;
+  }
 
   if (isLoading || !handover) {
     return (

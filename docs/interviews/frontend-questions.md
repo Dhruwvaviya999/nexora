@@ -116,9 +116,12 @@ renders the page.
 **18. What is your loading and error state story?**
 Loading is good: page spinners, `Skeleton` grids matching the final layout, a
 table skeleton, and `EmptyState`/`NoWorkspace` components.
-Errors are the gap: detail pages do `if (isLoading || !data) return <Spinner/>`,
-so a **failed** fetch shows an infinite spinner. There is no error boundary and no
-`app/error.tsx`. That is the first frontend fix I would make.
+Errors are handled too, now: eight pages branch on `isError` before the loading
+guard and render a shared `<ErrorState/>` whose heading is derived from the
+`ApiError.status` (a 403 reads "You don't have access to this"), with a retry
+wired to `refetch()`. Three error boundaries catch render-time exceptions —
+`app/(app)/error.tsx` keeps the sidebar intact, `app/error.tsx` covers public
+routes, and `app/global-error.tsx` handles a root-layout failure.
 
 **19. Why is `PAGE_SIZE = 20` duplicated in `lib/constants.ts`?**
 It mirrors DRF's `PAGE_SIZE`. It is duplication I would rather not have — along

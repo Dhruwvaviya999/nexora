@@ -126,6 +126,24 @@ services:
       start_period: 40s
     restart: unless-stopped
 
+  beat:
+    # The periodic-maintenance scheduler. Without it nothing prunes the JWT
+    # outstanding-token table (one row per refresh, read on every token
+    # validation), stale invitations, embedding jobs or search history.
+    #
+    # Exactly ONE beat process must run per deployment -- two would double
+    # every tick. It is deliberately not scaled.
+    build:
+      context: ./backend
+    command: celery -A config beat --loglevel=info
+    environment: *backend_env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   frontend:
     build:
       context: ./frontend

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { tokenStorage } from "@/lib/auth/token-storage";
+import { ensureAccessToken } from "@/lib/api/client";
 import { notificationSocketUrl } from "@/lib/realtime";
 
 /** Reconnect backoff, in milliseconds. Caps out rather than growing forever. */
@@ -40,13 +40,24 @@ export function useNotificationSocket(enabled = true): { isLive: boolean } {
     let attempt = 0;
     let disposed = false;
 
-    const connect = () => {
+    const connect = async () => {
       if (disposed) return;
 
-      const token = tokenStorage.getAccess();
+      // The access token lives in memory, so it is briefly absent right after
+      // a page reload. `ensureAccessToken` mints one from the httpOnly
+      // refresh cookie, sharing the client's single-flight refresh rather than
+      // racing it.
+      let token: string | null = null;
+      try {
+        token = await ensureAccessToken();
+      } catch {
+        token = null;
+      }
+      if (disposed) return;
+
       if (!token) {
-        // Signed out, or the access token expired between renders. The REST
-        // client refreshes it on the next request; try again shortly.
+        // Signed out, or the refresh failed. Try again shortly; the REST
+        // client will also refresh on its next request.
         retryTimer = setTimeout(connect, RETRY_DELAYS[0]);
         return;
       }

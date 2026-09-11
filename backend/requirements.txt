@@ -19,6 +19,18 @@ django-environ==0.11.2
 psycopg[binary]==3.2.13
 
 # ---------------------------------------------------------------------------
+# Static & uploaded files
+# ---------------------------------------------------------------------------
+# Serves collected static files with DEBUG off, so /admin/ is styled without a
+# separate web server in front.
+whitenoise==6.8.2
+# Optional S3 backend for uploads (enabled with USE_S3=True). Uploads are
+# workspace-scoped and always streamed through an authenticated view, never a
+# public URL -- S3 just removes the shared-filesystem requirement between the
+# web and worker processes.
+django-storages[s3]==1.14.4
+
+# ---------------------------------------------------------------------------
 # AI / RAG (Phase 5)
 # Versions below are what resolve on Python 3.14 (this project's interpreter).
 # ---------------------------------------------------------------------------

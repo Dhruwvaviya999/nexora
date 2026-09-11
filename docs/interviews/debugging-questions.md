@@ -110,16 +110,18 @@ means the text body rendered through an escaping engine instead of the dedicated
 **10. "The whole app shows a spinner and never loads."**
 
 `app/(app)/layout.tsx` renders a spinner while `isLoading || !isAuthenticated`.
-So either `/auth/me/` never resolved — check the Network tab — or it failed and
-the redirect effect did not run. Also check for a JavaScript exception: **there is
-no error boundary**, so a render error leaves the last committed UI on screen.
+So either the bootstrap refresh or `/auth/me/` never resolved — check the
+Network tab for `POST /auth/refresh/` and `GET /auth/me/`. A render-time
+exception would now be caught by `app/(app)/error.tsx` and shown as an error
+card, so an endless spinner points at a pending request, not a crash.
 
 **11. "A detail page spins forever but the list works."**
 
-`if (isLoading || !data) return <Spinner/>` — that condition cannot distinguish a
-slow fetch from a **failed** one. Check the Network tab; a 404 or 500 renders
-identically to loading. This is a known gap: detail pages have no `isError`
-branch.
+Detail pages now branch on `isError` **before** the loading guard and render
+`<ErrorState/>`, so a failure shows the status-specific message and a retry
+button. An endless spinner therefore means the request is genuinely still
+pending — check the Network tab for a stalled call, and whether
+`POST /auth/refresh/` is looping.
 
 **12. "Creating a task returns 403 but I am definitely in the workspace."**
 

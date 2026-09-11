@@ -83,13 +83,21 @@ Docker and CI where variables are injected directly.
 
 Split so you can point them at different Redis databases or instances.
 
-### JWT
+### JWT and the refresh cookie
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `JWT_ACCESS_TOKEN_LIFETIME_MINUTES` | `15` | Access token lifetime |
-| `JWT_REFRESH_TOKEN_LIFETIME_DAYS` | `7` | Refresh lifetime. **Must stay in sync with `MAX_AGE` in `frontend/src/lib/auth/token-storage.ts:14`** |
+| `JWT_REFRESH_TOKEN_LIFETIME_DAYS` | `7` | Refresh lifetime. The cookie's `Max-Age` is **derived from this**, so the two can no longer drift |
 | `JWT_SIGNING_KEY` | `""` → falls back to `SECRET_KEY` | Separate JWT key. `<hidden>` |
+| `AUTH_COOKIE_NAME` | `nexora_refresh` | Name of the httpOnly refresh cookie |
+| `AUTH_COOKIE_PATH` | `/api/v1/auth/` | Scoped so the cookie is not attached to every API call |
+| `AUTH_COOKIE_SAMESITE` | `Lax` | `Lax` is correct when frontend and API share a site. `None` (cross-site) **requires** `Secure` |
+| `AUTH_COOKIE_SECURE` | `False` | **Set `True` in production** |
+| `AUTH_COOKIE_DOMAIN` | `""` | Only needed to share the cookie across subdomains |
+
+`CORS_ALLOW_CREDENTIALS = True` is set in code (not an env var) — required for
+the browser to send the refresh cookie cross-origin.
 
 ### Rate limiting
 
@@ -269,16 +277,19 @@ Values that are code, not config:
 
 | Constant | Where | Note |
 |---|---|---|
-| `EMBEDDING_DIM = 384` | `base.py:352` | Baked into the DB column |
-| `PAGE_SIZE = 20` | `base.py:197` and `frontend/src/lib/constants.ts:180` | **Duplicated** — must be kept in sync manually |
+| `EMBEDDING_DIM = 384` | `base.py` | Baked into the DB column |
+| `PAGE_SIZE = 20` | `base.py` and `frontend/src/lib/constants.ts` | **Duplicated** — must be kept in sync manually |
+| `ALLOWED_UPLOAD_EXTENSIONS` | `apps/documents/serializers.py` | Upload allow-list |
+| `CELERY_BEAT_SCHEDULE` | `base.py` | Four nightly maintenance tasks |
 | `EXPORT_LIMIT = 10_000` | `apps/activities/views.py:16` | CSV row cap |
 | `_HISTORY_TURNS = 10` | `apps/ai/views.py:48` | Chat context window |
 | `RETRY_DELAYS` | `use-notification-socket.ts:10` | Socket backoff |
-| `MAX_AGE = 7 days` | `token-storage.ts:14` | **Must match `JWT_REFRESH_TOKEN_LIFETIME_DAYS`** |
+| `SESSION_FLAG_MAX_AGE = 7 days` | `token-storage.ts` | Lifetime of the non-secret session marker |
 | `API_ROUTES`, `ROUTES` | `frontend/src/lib/constants.ts` | Every path in the app |
 
-The two duplicated values — `PAGE_SIZE` and the refresh lifetime — are the ones
-to watch. Changing one side silently desynchronises the app.
+`PAGE_SIZE` is the remaining duplicated value to watch. The refresh-token
+lifetime used to be duplicated too; the cookie's `Max-Age` is now derived from
+`SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"]`, so that pair can no longer desync.
 
 ---
 

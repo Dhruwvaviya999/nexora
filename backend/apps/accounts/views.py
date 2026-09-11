@@ -11,14 +11,19 @@ from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.token_blacklist.models import (
     BlacklistedToken,
     OutstandingToken,
 )
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
+from apps.accounts.cookies import (
+    clear_refresh_cookie,
+    read_refresh_token,
+    set_refresh_cookie,
+)
 from apps.accounts.serializers import (
     EmailTokenObtainPairSerializer,
     LogoutSerializer,
@@ -56,16 +61,70 @@ class RegisterView(generics.CreateAPIView):
 
 @extend_schema(tags=["auth"])
 class LoginView(TokenObtainPairView):
-    """POST /auth/login/ — exchange email + password for JWT tokens."""
+    """POST /auth/login/ — exchange email + password for JWT tokens.
+
+    The access token is returned in the body (the client holds it in memory);
+    the refresh token is moved out of the body into an **httpOnly** cookie so
+    page script can never read the long-lived credential.
+    """
 
     serializer_class = EmailTokenObtainPairSerializer
     permission_classes = [AllowAny]
     throttle_classes = [LoginRateThrottle]
 
+    def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
+        if response.status_code == status.HTTP_200_OK:
+            refresh = response.data.pop("refresh", None)
+            if refresh:
+                set_refresh_cookie(response, refresh)
+        return response
+
+
+@extend_schema(tags=["auth"])
+class CookieTokenRefreshView(TokenRefreshView):
+    """POST /auth/refresh/ — exchange the refresh cookie for a new access token.
+
+    The token is read from the httpOnly cookie, so the request body is normally
+    empty. Rotation is on, so a new refresh token comes back — it replaces the
+    cookie and never reaches the body.
+    """
+
+    permission_classes = [AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        token = read_refresh_token(request)
+        if not token:
+            return Response(
+                {"detail": "No refresh token provided."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        # SimpleJWT's serializer reads `refresh` from the request data; feed it
+        # the cookie value so the caller does not have to know where it lives.
+        serializer = self.get_serializer(data={"refresh": token})
+        try:
+            serializer.is_valid(raise_exception=True)
+        except TokenError as exc:  # pragma: no cover - defensive
+            raise InvalidToken(exc.args[0]) from exc
+
+        data = dict(serializer.validated_data)
+        rotated = data.pop("refresh", None)
+
+        response = Response(data, status=status.HTTP_200_OK)
+        if rotated:
+            set_refresh_cookie(response, rotated)
+        return response
+
 
 @extend_schema(tags=["auth"])
 class LogoutView(APIView):
-    """POST /auth/logout/ — blacklist the supplied refresh token."""
+    """POST /auth/logout/ — blacklist the refresh token and clear the cookie.
+
+    The token comes from the cookie; a body value is still accepted for
+    non-browser clients. The cookie is cleared either way, so a client can
+    always end its own session locally even if the token was already invalid.
+    """
 
     permission_classes = [IsAuthenticated]
     serializer_class = LogoutSerializer
@@ -73,14 +132,27 @@ class LogoutView(APIView):
     def post(self, request):
         serializer = LogoutSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        try:
-            RefreshToken(serializer.validated_data["refresh"]).blacklist()
-        except TokenError:
-            return Response(
-                {"detail": "Invalid or expired token."},
-                status=status.HTTP_400_BAD_REQUEST,
+
+        token = read_refresh_token(request)
+        if not token:
+            return clear_refresh_cookie(
+                Response(
+                    {"detail": "No refresh token provided."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             )
-        return Response(status=status.HTTP_205_RESET_CONTENT)
+
+        try:
+            RefreshToken(token).blacklist()
+        except TokenError:
+            return clear_refresh_cookie(
+                Response(
+                    {"detail": "Invalid or expired token."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            )
+
+        return clear_refresh_cookie(Response(status=status.HTTP_205_RESET_CONTENT))
 
 
 @extend_schema(tags=["auth"])
@@ -179,9 +251,14 @@ class PasswordResetConfirmView(APIView):
             },
         )
 
-        return Response(
-            {"detail": "Password updated. You can sign in with your new password."},
-            status=status.HTTP_200_OK,
+        # Every session was just revoked, including this browser's. Drop the
+        # cookie too so the client is not left holding a token the server has
+        # already blacklisted.
+        return clear_refresh_cookie(
+            Response(
+                {"detail": "Password updated. You can sign in with your new password."},
+                status=status.HTTP_200_OK,
+            )
         )
 
 

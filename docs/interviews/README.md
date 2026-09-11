@@ -60,14 +60,14 @@ built it.
 Every decision cost something. Saying so unprompted is the single strongest
 signal you can send:
 
-> "I put the tokens in cookies rather than localStorage so the Next.js edge
-> middleware could read them. The cost is that they're not httpOnly, so an XSS
-> would expose both. If I were hardening this for production, the refresh token
-> would move to an httpOnly cookie set by the backend and the access token would
-> live in memory — which also removes the reason the middleware needed to read
-> them at all."
+> "Originally I put both tokens in cookies so the Next.js edge middleware could
+> read them — the cost being they couldn't be httpOnly. I fixed that by
+> restating the requirement: the edge doesn't need the *token*, only to know
+> whether a session exists. So the refresh token is now an httpOnly cookie set
+> by the backend, the access token lives in memory, and the middleware reads a
+> marker cookie containing the literal string "1" and no credential."
 
-That is a better answer than any defence of the current design.
+Naming the constraint you removed is stronger than defending a trade-off.
 
 ### 3. Know your own bugs
 
@@ -76,11 +76,17 @@ turns a weakness into evidence of judgement. The five worth having ready:
 
 | Issue | One-line framing |
 |---|---|
-| Non-httpOnly tokens | "A conscious trade-off for the edge guard; documented in the file. Here's the fix." |
 | No `completed_at` | "Analytics infers the completion week from `updated_at`. I noted it in the view docstring rather than hiding it." |
 | Document list N+1 | "Two `SerializerMethodField`s hit the database per row. `annotate` plus a `Prefetch` takes 41 queries to 3." |
-| Empty test files for tasks and projects | "I tested the risky parts — auth, roles, the handover workflow. CRUD is only covered by the smoke test. Tasks should have their own file." |
+| No `CONN_MAX_AGE` | "Every request opens a new PostgreSQL connection. One line to fix, and the first thing that breaks under load." |
 | Two pending handovers per task | "There's no constraint preventing it. It's the first business rule I'd add." |
+| `apps/ai` has no tests | "I covered tenancy, auth and the handover workflow first. The AI layer is the largest untested surface and it's next." |
+
+**Better still — lead with what you fixed and why:** the httpOnly token move,
+the authenticated download endpoint (which closed a cross-tenant read nobody
+had flagged), upload validation, error boundaries, the scheduler, and taking
+the suite from 93 to 201 tests — which immediately caught a real bug where any
+upload without a title returned 400.
 
 ---
 

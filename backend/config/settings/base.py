@@ -10,6 +10,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
+from celery.schedules import crontab
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -87,6 +88,10 @@ INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 # ---------------------------------------------------------------------------
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # Serves collected static files (the admin's CSS/JS) with DEBUG off, so no
+    # separate web server is needed just to make /admin/ usable. Must sit
+    # directly after SecurityMiddleware.
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     # CorsMiddleware must sit as high as possible, before CommonMiddleware.
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -175,6 +180,55 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
+# ---------------------------------------------------------------------------
+# Storage
+# ---------------------------------------------------------------------------
+# Uploaded documents are workspace-scoped, so they are NEVER served from a
+# public MEDIA_URL: a raw /media/ path would be an unauthenticated, guessable
+# read of another tenant's file. They are downloaded through
+# GET /documents/{id}/download/, which reuses the normal membership check and
+# streams from whichever backend is configured here.
+#
+# Local disk by default. Set USE_S3=True (plus the AWS_* vars) to move uploads
+# to object storage, which is what a multi-host deploy needs -- the web and
+# worker processes can then stop sharing a filesystem volume.
+USE_S3 = env.bool("USE_S3", default=False)
+
+if USE_S3:
+    # Requires django-storages[s3]; see requirements.txt.
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3.S3Storage",
+            "OPTIONS": {
+                "bucket_name": env("AWS_STORAGE_BUCKET_NAME"),
+                "region_name": env("AWS_S3_REGION_NAME", default="us-east-1"),
+                "endpoint_url": env("AWS_S3_ENDPOINT_URL", default=None),
+                # Objects stay private; the download view is the only way in.
+                "default_acl": None,
+                "querystring_auth": True,
+                "file_overwrite": False,
+            },
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
+else:
+    STORAGES = {
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        # WhiteNoise serves the admin's CSS/JS in production without a separate
+        # web server. Without it /admin/ renders unstyled once DEBUG is off.
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
+
+# Largest upload accepted, in bytes. Enforced in DocumentSerializer as well, so
+# the user gets a field error rather than a raw 413.
+MAX_UPLOAD_SIZE = env.int("MAX_UPLOAD_SIZE", default=25 * 1024 * 1024)
+# Reject oversized bodies before they are fully buffered into memory.
+DATA_UPLOAD_MAX_MEMORY_SIZE = MAX_UPLOAD_SIZE + (1024 * 1024)
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
@@ -280,6 +334,43 @@ CELERY_TASK_ALWAYS_EAGER = env.bool("CELERY_TASK_ALWAYS_EAGER", default=False)
 CELERY_TASK_EAGER_PROPAGATES = False
 
 # ---------------------------------------------------------------------------
+# Celery beat (periodic maintenance)
+# ---------------------------------------------------------------------------
+# Several tables grow without bound if nothing prunes them. The worst is
+# SimpleJWT's outstanding-token table: ROTATE_REFRESH_TOKENS means one row per
+# refresh, and it is consulted on every token validation.
+#
+# Run with:  celery -A config beat --loglevel=info
+# The schedule is static (no django-celery-beat dependency, nothing to
+# configure in the admin), so it is versioned with the code.
+CELERY_BEAT_SCHEDULE = {
+    # SimpleJWT ships this command; it deletes outstanding/blacklisted tokens
+    # whose expiry has passed. Nightly is plenty.
+    "flush-expired-jwt-tokens": {
+        "task": "common.flush_expired_tokens",
+        "schedule": crontab(hour=3, minute=0),
+    },
+    # Invitations expire lazily -- the status only flips when someone tries to
+    # accept. This keeps "pending" counts honest.
+    "expire-stale-invitations": {
+        "task": "common.expire_stale_invitations",
+        "schedule": crontab(hour=3, minute=15),
+    },
+    # Embedding jobs are an operational log; keep a rolling window.
+    "prune-old-embedding-jobs": {
+        "task": "common.prune_embedding_jobs",
+        "schedule": crontab(hour=3, minute=30),
+        "kwargs": {"days": env.int("EMBEDDING_JOB_RETENTION_DAYS", default=30)},
+    },
+    # Raw search queries are user text; do not keep them forever.
+    "prune-old-search-history": {
+        "task": "common.prune_search_history",
+        "schedule": crontab(hour=3, minute=45),
+        "kwargs": {"days": env.int("SEARCH_HISTORY_RETENTION_DAYS", default=90)},
+    },
+}
+
+# ---------------------------------------------------------------------------
 # Channels (realtime)
 # ---------------------------------------------------------------------------
 # ASGI_APPLICATION is set above, next to WSGI_APPLICATION.
@@ -311,6 +402,27 @@ SIMPLE_JWT = {
 }
 
 # ---------------------------------------------------------------------------
+# Refresh-token cookie
+# ---------------------------------------------------------------------------
+# The refresh token is the long-lived credential, so it is delivered as an
+# httpOnly cookie instead of in the JSON body: page script cannot read it, so an
+# XSS cannot steal a week-long session. The short-lived access token still comes
+# back in the body and is held in memory by the client.
+#
+# SameSite: localhost:3000 -> localhost:8000 and app.example.com ->
+# api.example.com are both *same-site* (ports and subdomains do not change the
+# site), so "Lax" is correct for the normal deployment shapes. A genuinely
+# cross-site split needs AUTH_COOKIE_SAMESITE=None together with
+# AUTH_COOKIE_SECURE=True, or the browser drops the cookie.
+AUTH_COOKIE_NAME = env("AUTH_COOKIE_NAME", default="nexora_refresh")
+# Scoped to the auth routes: refresh and logout are the only endpoints that
+# need it, so it is not attached to every other API call.
+AUTH_COOKIE_PATH = env("AUTH_COOKIE_PATH", default="/api/v1/auth/")
+AUTH_COOKIE_SAMESITE = env("AUTH_COOKIE_SAMESITE", default="Lax")
+AUTH_COOKIE_SECURE = env.bool("AUTH_COOKIE_SECURE", default=False)
+AUTH_COOKIE_DOMAIN = env("AUTH_COOKIE_DOMAIN", default="")
+
+# ---------------------------------------------------------------------------
 # drf-spectacular (OpenAPI 3 schema)
 # ---------------------------------------------------------------------------
 SPECTACULAR_SETTINGS = {
@@ -325,6 +437,12 @@ SPECTACULAR_SETTINGS = {
 # CORS
 # ---------------------------------------------------------------------------
 CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
+
+# Required for the httpOnly refresh cookie: without it the browser refuses to
+# send credentials on a cross-origin request, and refresh would never work.
+# Safe here because CORS_ALLOWED_ORIGINS is an explicit list -- credentials are
+# never combined with a wildcard origin (the browser forbids it anyway).
+CORS_ALLOW_CREDENTIALS = True
 
 # ---------------------------------------------------------------------------
 # AI / RAG (Phase 5)

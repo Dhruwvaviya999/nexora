@@ -8,7 +8,7 @@ under test. `manage.py test` selects this module automatically.
 """
 
 from .base import *  # noqa: F401,F403
-from .base import REST_FRAMEWORK, env  # noqa: F401
+from .base import REST_FRAMEWORK, STORAGES, env  # noqa: F401
 
 DEBUG = False
 
@@ -30,6 +30,20 @@ CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True
 
 CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+
+# WhiteNoise's manifest storage expects `collectstatic` to have run and warns
+# on every request otherwise. Tests never serve static files, so use the plain
+# backend and keep the output readable.
+STORAGES = {
+    **STORAGES,  # noqa: F405
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+}
+
+# Serve straight from the app directories rather than STATIC_ROOT, so the
+# suite does not warn once per request about a staticfiles/ directory that
+# only exists after collectstatic.
+WHITENOISE_USE_FINDERS = True
+WHITENOISE_AUTOREFRESH = True
 
 CACHES = {
     "default": {

@@ -115,10 +115,13 @@ sequenceDiagram
     else valid
         S->>S: build access + refresh, UPDATE_LAST_LOGIN
         S->>S: data["user"] = UserSerializer(self.user).data
-        S-->>C: 200 {access, refresh, user}
+        S->>V: {access, refresh, user}
+        V->>V: pop "refresh" from the body
+        V->>V: Set-Cookie: nexora_refresh=... HttpOnly
+        S-->>C: 200 {access, user}   (no refresh in the body)
         C-->>P: LoginResponse
-        P->>T: tokenStorage.set(access, refresh)
-        T->>T: document.cookie = nexora.accessToken=...; nexora.refreshToken=...
+        P->>T: tokenStorage.setAccess(access)   (memory only)
+        T->>T: document.cookie = nexora.session=1   (marker, no secret)
         P->>P: setUser(res.user)
         F->>F: toast.success + router.replace(next ?? "/dashboard")
     end
@@ -136,7 +139,8 @@ sequenceDiagram
 | 6 | `backend/apps/accounts/urls.py` | `path("login/", LoginView...)` |
 | 7 | `backend/apps/accounts/views.py` | `LoginView` (line 58) |
 | 8 | `backend/apps/accounts/serializers.py` | `EmailTokenObtainPairSerializer` (line 81) |
-| 9 | `frontend/src/lib/auth/token-storage.ts` | `tokenStorage.set` (line 37) |
+| 9 | `backend/apps/accounts/cookies.py` | `set_refresh_cookie` |
+| 10 | `frontend/src/lib/auth/token-storage.ts` | `tokenStorage.setAccess` |
 
 ### Why `EmailTokenObtainPairSerializer` exists
 
@@ -157,41 +161,70 @@ response**.
 
 ---
 
-## 4. Token storage — the key trade-off
+## 4. Token storage — split by lifetime
 
-`frontend/src/lib/auth/token-storage.ts`
+The two tokens are stored **very differently**, on purpose.
+
+### The refresh token — httpOnly cookie, never in JavaScript
+
+Issued by the backend, stripped out of the login response body:
+
+```python
+def post(self, request, *args, **kwargs):
+    response = super().post(request, *args, **kwargs)
+    if response.status_code == status.HTTP_200_OK:
+        refresh = response.data.pop("refresh", None)   # out of the body
+        if refresh:
+            set_refresh_cookie(response, refresh)      # into an httpOnly cookie
+    return response
+```
+`backend/apps/accounts/views.py` — `LoginView.post`
+
+| Property | Value | Why |
+|---|---|---|
+| `httpOnly` | **Yes** | Page script cannot read it. An XSS cannot steal a week-long session |
+| `Secure` | `AUTH_COOKIE_SECURE` (set `True` in production) | Never sent over plaintext |
+| `SameSite` | `AUTH_COOKIE_SAMESITE`, default `Lax` | Blocks cross-site POSTs carrying it |
+| `path` | `/api/v1/auth/` | Only refresh and logout need it, so it is not attached to every API call |
+| `Max-Age` | Derived from `REFRESH_TOKEN_LIFETIME` | Cannot drift from the token's real lifetime |
+
+Helpers live in `backend/apps/accounts/cookies.py`.
+
+### The access token — memory only
+
+`frontend/src/lib/auth/token-storage.ts` keeps it in a module-scoped variable.
+It is never written to a cookie, to `localStorage`, or anywhere else readable
+at rest. It dies with the tab, and expires in 15 minutes regardless.
+
+### The session marker — a non-credential
+
+`proxy.ts` runs at the edge **on the frontend origin** and cannot read a cookie
+scoped to the API origin. It does not need to. It reads `nexora.session`, whose
+value is the literal string `"1"`:
 
 ```ts
-const COOKIE_OPTS = "path=/; SameSite=Lax";
-const MAX_AGE = 60 * 60 * 24 * 7;          // mirrors the backend's 7-day refresh
-
-function setCookie(name, value) {
-  document.cookie = `${name}=${encodeURIComponent(value)}; Max-Age=${MAX_AGE}; ${COOKIE_OPTS}`;
-}
+const hasSession = request.cookies.get(STORAGE_KEYS.sessionFlag)?.value === "1";
 ```
 
-| Property | Value | Consequence |
-|---|---|---|
-| Storage | Cookies, **not** localStorage | `proxy.ts` can read them server-side at the edge |
-| `httpOnly` | **No** — set by JavaScript | Any XSS on the page can read both tokens |
-| `Secure` | **Not set** | Cookies would be sent over plain HTTP |
-| `SameSite` | `Lax` | Blocks the cookie on cross-site POST; some CSRF protection |
-| `path` | `/` | Sent to every route on the frontend origin |
-| Max-Age | 7 days for **both** tokens | The access cookie outlives the 15-minute token; the client just refreshes |
+Forging it gains an attacker nothing: the page renders, every API call 401s,
+and the protected layout redirects them straight back out.
 
-The file documents this trade-off itself (lines 3-10): *"They are NOT httpOnly —
-the backend returns tokens in the JSON body, so the client owns them. Good enough
-for this foundation; a later phase can move refresh tokens to an httpOnly
-cookie."*
+### Why `SameSite=Lax` is correct here
 
-Note the cookies are set on the **frontend origin** (`localhost:3000`) and are
-never sent to the API automatically — the API is a different origin and reads the
-`Authorization` header instead. So `SameSite`/`Secure` here protect the cookie
-from other sites, not the API call.
+`localhost:3000` → `localhost:8000` and `app.example.com` → `api.example.com`
+are both **same-site** — ports and subdomains do not change the site — so `Lax`
+cookies are sent. Only a genuinely cross-site split (different registrable
+domains) needs `SameSite=None`, which additionally requires `Secure`.
 
-Full risk analysis in [18-security.md](18-security.md).
+`CORS_ALLOW_CREDENTIALS = True` is required for the browser to send the cookie
+cross-origin at all, and is safe because `CORS_ALLOWED_ORIGINS` is an explicit
+list.
 
----
+### What this costs
+
+An XSS can still read the in-memory access token for up to 15 minutes. That is
+inherent to any browser client. The difference is the blast radius: minutes
+instead of a week, and no ability to mint new tokens.
 
 ## 5. Authenticated requests and silent refresh
 
@@ -203,7 +236,7 @@ sequenceDiagram
     participant R as refreshAccessToken()
 
     H->>C: apiClient.get("/tasks/")
-    C->>C: access = tokenStorage.getAccess()
+    C->>C: access = tokenStorage.getAccess()   (memory)
     C->>API: GET /tasks/  Authorization: Bearer <access>
     alt 200
         API-->>C: JSON
@@ -211,10 +244,11 @@ sequenceDiagram
     else 401 and not skipAuth and not _isRetry
         API-->>C: 401
         C->>R: getRefreshedToken()   (single-flight)
-        R->>API: POST /auth/refresh/ {refresh}
+        R->>API: POST /auth/refresh/ {} with credentials:"include"
+        Note over R,API: no token in the body —<br/>the browser attaches the httpOnly cookie
         alt refresh valid
-            API-->>R: {access, refresh}   (rotated; old one blacklisted)
-            R->>R: tokenStorage.set(new pair)
+            API-->>R: 200 {access}  + Set-Cookie: rotated refresh
+            R->>R: tokenStorage.setAccess(access)
             R-->>C: newAccess
             C->>API: retry once with _isRetry:true
             API-->>C: 200
@@ -228,21 +262,37 @@ sequenceDiagram
     end
 ```
 
-Three properties worth being able to state:
+Four properties worth being able to state:
 
-1. **Exactly one refresh** for N concurrent 401s — `refreshPromise` is module
-   scope (`client.ts:39`).
-2. **Exactly one retry** — `_isRetry: true` on the recursive call
-   (`client.ts:109`).
-3. **`skipAuth` endpoints never refresh** — login, register and the refresh call
-   itself are excluded, so a failed login cannot trigger a refresh loop
-   (`lib/api/auth.ts:17,21`).
+1. **The client cannot send the refresh token** — it cannot read it. The request
+   body is `{}` and `credentials: "include"` does the work.
+2. **The rotated token never touches JavaScript** either: `CookieTokenRefreshView`
+   pops it out of the serializer's output and writes it straight back to the
+   cookie.
+3. **Exactly one refresh** for N concurrent 401s — `refreshPromise` is module
+   scope. Still necessary, and now doubly so: rotation makes the token
+   single-use, and the cookie is shared browser state.
+4. **Exactly one retry** — `_isRetry: true` on the recursive call.
 
-When the refresh finally fails, cookies are cleared. The next render of
-`app/(app)/layout.tsx` sees `isAuthenticated === false` and redirects to
-`/login`.
+### Bootstrap after a page reload
 
----
+A reload wipes the in-memory access token but leaves the refresh cookie. So
+"am I logged in?" becomes "can I still refresh?":
+
+```ts
+if (!tokenStorage.getAccess() && !tokenStorage.hasSessionFlag()) {
+  setIsLoading(false);            // never signed in — skip a guaranteed 401
+  return;
+}
+const token = await ensureAccessToken();   // mints one from the cookie
+if (!token) throw new Error("No session");
+const me = await authApi.me();
+```
+`frontend/src/providers/auth-provider.tsx`
+
+`ensureAccessToken()` (exported from `client.ts`) returns the in-memory token if
+present, otherwise runs the same single-flight refresh — so the websocket hook
+and the first data request cannot trigger two refreshes between them.
 
 ## 6. `GET /auth/me/`
 
@@ -271,30 +321,46 @@ what turns "I have a cookie" into "I am user X".
 ```python
 class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
-    def post(self, request):
-        serializer = LogoutSerializer(data=request.data); serializer.is_valid(raise_exception=True)
-        try:    RefreshToken(serializer.validated_data["refresh"]).blacklist()
-        except TokenError: return Response({"detail": "Invalid or expired token."}, status=400)
-        return Response(status=205)
-```
-`backend/apps/accounts/views.py:66-83`
 
-Client side (`auth-provider.tsx:67-79`) does four things in `finally`, so they
-happen even if the request fails:
+    def post(self, request):
+        serializer = LogoutSerializer(data=request.data)   # `refresh` now optional
+        serializer.is_valid(raise_exception=True)
+
+        token = read_refresh_token(request)                # cookie first, body fallback
+        if not token:
+            return clear_refresh_cookie(Response({"detail": "No refresh token provided."}, 400))
+        try:
+            RefreshToken(token).blacklist()
+        except TokenError:
+            return clear_refresh_cookie(Response({"detail": "Invalid or expired token."}, 400))
+        return clear_refresh_cookie(Response(status=205))
+```
+`backend/apps/accounts/views.py`
+
+**The cookie is cleared on every path**, including the failure paths — a client
+must always be able to end its own session locally, even if the token was
+already invalid.
+
+`clear_refresh_cookie` passes the same `path`, `domain` and `samesite` the
+cookie was set with. Django's `delete_cookie` requires that, or the browser
+keeps the original and logout silently fails.
+
+The body fallback (`read_refresh_token`) keeps non-browser clients working:
+mobile and CLI callers have no cookie jar, so they post the token explicitly.
+
+Client side (`auth-provider.tsx`), all in a `finally` so it runs even if the
+request fails:
 
 ```ts
-tokenStorage.clear();
+tokenStorage.clear();     // drops the in-memory token and the session marker
 setUser(null);
-queryClient.clear();          // ← critical: no stale data for the next user
+queryClient.clear();      // critical: no stale data for the next user
 router.replace(ROUTES.login);
 ```
 
-**What logout does not do:** it blacklists only the refresh token that was sent.
-The current *access* token stays valid until it expires (up to 15 minutes) —
-that is inherent to stateless JWT, not a bug. Sessions on other devices are
-untouched.
-
----
+**What logout still does not do:** the current *access* token stays valid until
+it expires (up to 15 minutes) — inherent to stateless JWT. Sessions on other
+devices are untouched.
 
 ## 8. Password reset
 
@@ -342,7 +408,8 @@ are registered"* (`views.py:110-113`).
 and `last_login`. So the link stops working the moment the password changes or
 the user logs in (`serializers.py:156-162`).
 
-**c. Every session is revoked on reset.** This is the subtle one:
+**c. Every session is revoked on reset,** and this browser's cookie is cleared
+with it. This is the subtle one:
 
 ```python
 def _blacklist_all_refresh_tokens(user) -> None:
@@ -351,10 +418,13 @@ def _blacklist_all_refresh_tokens(user) -> None:
 ```
 `backend/apps/accounts/views.py:188-191`
 
-The comment explains why (lines 166-168): refresh tokens outlive a reset by days,
-so whoever caused the reset would keep access unless they are revoked. Resetting
-your password because you think you were compromised now actually kicks the
-attacker out.
+The comment explains why: refresh tokens outlive a reset by days, so whoever
+caused the reset would keep access unless they are revoked. Resetting your
+password because you think you were compromised actually kicks the attacker
+out.
+
+The confirm response also calls `clear_refresh_cookie`, so the browser is not
+left holding a token the server has already blacklisted.
 
 ### Validation placement
 
@@ -499,9 +569,10 @@ anything. Worth knowing before an interviewer asks.
 |---|---|---|
 | Wrong password | 401 | Toast: "No active account found with the given credentials" |
 | More than 10 login attempts/min from one IP | 429 | Toast: "Request was throttled. Expected available in N seconds." |
-| Access token expired | transparent | Nothing — silent refresh, request retried |
-| Refresh token expired / blacklisted | 401 → cookies cleared | Redirected to `/login` |
-| No token at all on a protected page | edge redirect (matched routes) or spinner→redirect | `/login?next=...` |
+| Access token expired | transparent | Nothing — silent refresh from the cookie, request retried |
+| Page reloaded | transparent | Access token re-minted from the refresh cookie during bootstrap |
+| Refresh token expired / blacklisted | 401 → in-memory token and marker cleared | Redirected to `/login` |
+| No session marker on any protected page | edge redirect — all twelve route trees are matched | `/login?next=...` |
 | Authenticated, not a workspace member, requests a task by id | **404** | "Not found" — the id is not confirmed to exist |
 | Member tries to review a handover | 403 | Toast: "Only workspace owners, admins, and managers can review handovers." |
 | Admin tries to delete a workspace | 403 | Toast: "Only the workspace owner can perform this action." |

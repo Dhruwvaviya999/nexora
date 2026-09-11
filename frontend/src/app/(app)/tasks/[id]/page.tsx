@@ -34,6 +34,7 @@ import { formatDate } from "@/lib/format";
 import { ROUTES, TASK_STATUSES } from "@/lib/constants";
 
 import { PageContainer } from "@/components/layout/page-container";
+import { ErrorState } from "@/components/shared/error-state";
 function Detail({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
@@ -45,8 +46,14 @@ function Detail({ label, children }: { label: string; children: React.ReactNode 
 
 export default function TaskDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { data: task, isLoading } = useTask(id);
+  const { data: task, isLoading, isError, error, refetch } = useTask(id);
   const updateTask = useUpdateTask(id);
+
+  // A failed fetch used to be indistinguishable from a slow one and
+  // spun forever; surface the real error instead.
+  if (isError) {
+    return <ErrorState error={error} onRetry={() => refetch()} />;
+  }
 
   if (isLoading || !task) {
     return (

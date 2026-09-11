@@ -76,6 +76,10 @@ export const API_ROUTES = {
     list: "/documents/",
     detail: (id: string) => `/documents/${id}/`,
     reindex: (id: string) => `/documents/${id}/reindex/`,
+    // Authenticated, workspace-scoped file stream. Uploads are never exposed
+    // at a public /media/ URL, so this must be fetched with a bearer token
+    // (see lib/api/download.ts) rather than linked to directly.
+    download: (id: string) => `/documents/${id}/download/`,
   },
   ai: {
     chat: "/ai/chat/",
@@ -179,9 +183,16 @@ export const TASK_PRIORITIES = [
 /** Default page size mirrors DRF's PAGE_SIZE. */
 export const PAGE_SIZE = 20;
 
-/** localStorage / cookie keys (auth tokens land here in Phase 2). */
+/**
+ * Cookie / localStorage keys.
+ *
+ * Note what is *absent*: there is no access- or refresh-token key. The refresh
+ * token lives in an httpOnly cookie the browser never exposes to script, and
+ * the access token is held in memory only (see lib/auth/token-storage.ts).
+ * `sessionFlag` carries no secret — it is the literal string "1", read by the
+ * edge guard in src/proxy.ts to decide whether to render or redirect.
+ */
 export const STORAGE_KEYS = {
-  accessToken: "nexora.accessToken",
-  refreshToken: "nexora.refreshToken",
+  sessionFlag: "nexora.session",
   theme: "nexora.theme",
 } as const;

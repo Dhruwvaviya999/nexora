@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { useParams } from "next/navigation";
 import { Download, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
@@ -17,10 +18,13 @@ import { AISummaryCard } from "@/components/ai/ai-summary-card";
 import { AISuggestionCard } from "@/components/ai/ai-suggestion-card";
 import { EmbeddingStatusBadge } from "@/components/ai/embedding-status-badge";
 import { useDocument, useReindexDocument } from "@/hooks/use-documents";
+import { downloadFile } from "@/lib/api/download";
 import { getErrorMessage } from "@/lib/api/errors";
+import { API_ROUTES } from "@/lib/constants";
 import { formatBytes, formatDateTime } from "@/lib/format";
 
 import { PageContainer } from "@/components/layout/page-container";
+import { ErrorState } from "@/components/shared/error-state";
 function Detail({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="space-y-1">
@@ -32,8 +36,9 @@ function Detail({ label, value }: { label: string; value: React.ReactNode }) {
 
 export default function DocumentDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { data: doc, isLoading } = useDocument(id);
+  const { data: doc, isLoading, isError, error, refetch } = useDocument(id);
   const reindex = useReindexDocument();
+  const [downloading, setDownloading] = React.useState(false);
 
   async function handleReindex() {
     try {
@@ -50,6 +55,12 @@ export default function DocumentDetailPage() {
     }
   }
 
+  // A failed fetch used to be indistinguishable from a slow one and
+  // spun forever; surface the real error instead.
+  if (isError) {
+    return <ErrorState error={error} onRetry={() => refetch()} />;
+  }
+
   if (isLoading || !doc) {
     return (
       <div className="flex justify-center py-16">
@@ -62,11 +73,28 @@ export default function DocumentDetailPage() {
     <PageContainer size="sm" className="space-y-6">
       <PageHeader title={doc.title} description={doc.description || "No description"}>
         {doc.file_url && (
-          <Button asChild variant="outline">
-            <a href={doc.file_url} target="_blank" rel="noreferrer" download>
-              <Download className="size-4" />
-              Download
-            </a>
+          // Not a plain <a href>: the file is served by an authenticated,
+          // workspace-scoped endpoint, so it has to be fetched with the bearer
+          // token and handed to the browser as a blob.
+          <Button
+            variant="outline"
+            disabled={downloading}
+            onClick={async () => {
+              setDownloading(true);
+              try {
+                await downloadFile(
+                  API_ROUTES.documents.download(doc.id),
+                  doc.title
+                );
+              } catch (e) {
+                toast.error(getErrorMessage(e));
+              } finally {
+                setDownloading(false);
+              }
+            }}
+          >
+            <Download className="size-4" />
+            {downloading ? "Downloading…" : "Download"}
           </Button>
         )}
       </PageHeader>

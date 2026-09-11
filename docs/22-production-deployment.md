@@ -13,8 +13,8 @@ file documents what is real and states plainly what is missing.
 
 | File | Purpose |
 |---|---|
-| `docker-compose.yml` | Five services, four volumes, healthchecks, start ordering |
-| `backend/Dockerfile` | One image for **both** `web` and `worker` |
+| `docker-compose.yml` | **Six** services (db, redis, web, worker, **beat**, frontend), four volumes, healthchecks, start ordering |
+| `backend/Dockerfile` | One image for `web`, `worker` **and `beat`**; runs `collectstatic` at build time |
 | `frontend/Dockerfile` | Three-stage build: deps → builder → runner |
 | `.github/workflows/ci.yml` | Backend tests, frontend checks, Docker image builds |
 | `.env.docker.example` | Committed configuration template |
@@ -30,6 +30,7 @@ flowchart TD
     FE["frontend<br/>node:22-alpine<br/>next start :3000"]
     WEB["web<br/>python:3.13-slim<br/>uvicorn config.asgi:application --workers 3 :8000"]
     WK["worker<br/>same image<br/>celery -A config worker --concurrency=2"]
+    BT["beat<br/>same image<br/>celery -A config beat<br/>(exactly one)"]
     DB[("db<br/>pgvector/pgvector:pg16<br/>:5432")]
     RD[("redis<br/>redis:7-alpine<br/>:6379")]
     V1[("volume: postgres_data")]
@@ -43,6 +44,8 @@ flowchart TD
     WEB --> RD
     WK --> DB
     WK --> RD
+    BT --> DB
+    BT --> RD
     RD -.->|broker| WK
     DB --- V1
     RD --- V2
@@ -224,17 +227,25 @@ images with buildx and GitHub Actions cache (`cache-from/to: type=gha`).
 
 ## 6. Production gaps — the honest list
 
-### 🔴 Uploaded files are not served
+### ✅ Uploaded files are not served — FIXED
 
-`config/urls.py:54-55` serves `/media/` **only when `DEBUG=True`**. In production
-`DEBUG` is `False`, there is no Nginx, and no object-storage backend is
-configured. `STORAGES` is left at Django's default `FileSystemStorage`.
+`file_url` now points at `GET /documents/{id}/download/`, an authenticated,
+workspace-scoped view that streams the file from whatever storage is
+configured. That works identically with `DEBUG=False` and with S3, and it
+closed a second problem the original finding missed: the old `/media/` URL was
+an **unauthenticated cross-tenant read**.
 
-**Result: `document.file_url` returns a URL that 404s in production.**
+Set `USE_S3=True` plus the `AWS_*` vars to move uploads to object storage —
+which is what lets the web and worker stop sharing a filesystem volume, and so
+unblocks running them on different hosts.
 
-Fix: either add `django-storages` + S3 (`STORAGES["default"]`) — which the
-`Document` model docstring already anticipates — or put a reverse proxy in front
-that serves `/media/` from the volume.
+### ✅ No static file serving for Django — FIXED
+
+WhiteNoise is in `MIDDLEWARE` (directly after `SecurityMiddleware`, as it
+requires) with `CompressedManifestStaticFilesStorage`, and the backend
+Dockerfile now runs `collectstatic` at build time using throwaway placeholder
+settings. `/admin/` renders styled with `DEBUG=False` and no separate web
+server.
 
 ### 🔴 No reverse proxy / TLS termination
 
@@ -247,13 +258,8 @@ with the comment *"TLS terminates at the proxy in front of this, not here."*
 You must supply the proxy. It also needs to forward the WebSocket upgrade for
 `/ws/`.
 
-### 🔴 No static file serving for Django
-
-`STATIC_ROOT` is set but **`collectstatic` is never run** — not in the Dockerfile,
-not in the compose command. WhiteNoise is not installed. So the Django admin at
-`/admin/` will render without CSS in production.
-
-The API itself does not need static files, so this only affects the admin.
+**Now more important than before:** the refresh cookie should be sent with
+`AUTH_COOKIE_SECURE=True` in production, which requires HTTPS end to end.
 
 ### 🟠 Migrations run per replica
 
@@ -269,10 +275,15 @@ as durable as the container.
 `postgres_data` is a Docker named volume. No `pg_dump` schedule, no snapshot
 policy, nothing. `docker compose down -v` destroys everything.
 
-### 🟠 No scheduler
+### ✅ No scheduler — FIXED
 
-No Celery beat service. That means `flushexpiredtokens` never runs, so the JWT
-blacklist tables grow forever, and nothing sweeps expired invitations.
+A `beat` service now runs `celery -A config beat`, driving four nightly
+maintenance tasks (`flushexpiredtokens`, stale-invitation expiry, embedding-job
+pruning, search-history pruning).
+
+**Operational note:** exactly **one** beat process must run per deployment —
+two would double every tick. The service is deliberately not scaled, and the
+compose comment says so.
 
 ### 🟡 Compose is not an orchestrator
 
@@ -283,27 +294,23 @@ a single-host demo or staging box; not a production platform.
 
 ## 7. What a real production setup would need
 
-Ordered by necessity, all derived from gaps above:
+Three of the original ten are now done. What remains:
 
 1. **Reverse proxy** (Nginx / Caddy / a cloud load balancer) terminating TLS,
-   setting `X-Forwarded-Proto`, forwarding `/ws/` upgrades, and serving `/media/`
-   (or hand media to S3 instead).
-2. **Object storage** for uploads — `django-storages` + S3, so `web` and `worker`
-   stop sharing a local volume.
-3. **`collectstatic`** in the image build, plus WhiteNoise or proxy-served
-   statics.
+   setting `X-Forwarded-Proto`, and forwarding `/ws/` upgrades. **The biggest
+   remaining gap** — and now a prerequisite for `AUTH_COOKIE_SECURE=True`.
+2. ~~Object storage for uploads~~ — ✅ supported via `USE_S3=True`; still needs
+   a bucket provisioned.
+3. ~~`collectstatic` / static serving~~ — ✅ WhiteNoise, run at image build.
 4. **Managed PostgreSQL with pgvector** and automated backups.
 5. **Managed Redis** — required the moment there is more than one process, for
    both the channel layer and the throttle cache.
 6. **A migration job** separate from app start.
-7. **A Celery beat service** for `flushexpiredtokens` and any future periodic
-   work.
-8. **Log shipping + error tracking.**
+7. ~~A Celery beat service~~ — ✅ added.
+8. **Log shipping + error tracking.** Now the largest observability gap.
 9. **Image publishing** in CI, then a deploy step.
-10. **Secrets management** — the compose setup reads a `.env` file; production
-    wants a real secret store.
-
----
+10. **Secrets management** — compose reads a `.env` file; production wants a
+    real secret store.
 
 ## 8. Deployment checklist
 
@@ -319,8 +326,12 @@ Ordered by necessity, all derived from gaps above:
 - [ ] `REDIS_URL` set — required for multi-process channels and throttling
 - [ ] `NEXT_PUBLIC_API_URL` passed as a **build arg**, set to the browser-reachable API URL
 - [ ] `AI_FIELD_ENCRYPTION_KEY` set to a dedicated Fernet key, so rotating `SECRET_KEY` does not invalidate stored provider keys
+- [ ] **`AUTH_COOKIE_SECURE=True`** — the refresh cookie must not travel over plaintext
+- [ ] `AUTH_COOKIE_SAMESITE` — `Lax` if the frontend and API share a site; `None` (with Secure) only for a genuinely cross-site split
+- [ ] Exactly **one** `beat` process running — two would double every scheduled tick
+- [ ] `USE_S3=True` with a provisioned bucket, if running more than one host
 - [ ] `EMAIL_*` configured, or invitations and password resets silently do not arrive
-- [ ] Media storage decided (S3 or proxy-served volume)
+- [ ] Media storage decided (`USE_S3=True`, or accept a single-host volume)
 - [ ] TLS terminating proxy in place, forwarding `X-Forwarded-Proto` and `/ws/` upgrades
 
 **After deploying:**
@@ -330,7 +341,9 @@ Ordered by necessity, all derived from gaps above:
 - [ ] Register, log in, land on `/dashboard`
 - [ ] DevTools → Network → WS shows `/ws/notifications/` open
 - [ ] Upload a document; `embedding_status` reaches `completed`
-- [ ] Download that document's file URL (this is the gap most likely to fail)
+- [ ] Download a document (now an authenticated endpoint — verify it streams, and that a non-member gets 404)
+- [ ] `/admin/` renders **with** CSS (confirms collectstatic + WhiteNoise)
+- [ ] Reload a page while signed in — the session must survive on the refresh cookie alone
 - [ ] Trigger a password reset and confirm the email arrives with a working link
 - [ ] Export a handover PDF
 

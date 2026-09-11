@@ -21,8 +21,14 @@ export const authApi = {
       skipAuth: true,
     }),
 
-  logout: (refresh: string) =>
-    apiClient.post<void>(API_ROUTES.auth.logout, { refresh }),
+  /**
+   * End the session server-side.
+   *
+   * No token is passed: the backend reads the httpOnly refresh cookie,
+   * blacklists it, and clears it on the response. This client could not send
+   * the token even if it wanted to.
+   */
+  logout: () => apiClient.post<void>(API_ROUTES.auth.logout, {}),
 
   me: () => apiClient.get<AuthUser>(API_ROUTES.auth.me),
 

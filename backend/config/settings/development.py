@@ -1,7 +1,7 @@
 """Local development settings."""
 
 from .base import *  # noqa: F401,F403
-from .base import env
+from .base import STORAGES, env  # noqa: F401
 
 # Default to DEBUG on locally even if .env omits it.
 DEBUG = env("DEBUG", default=True)
@@ -19,6 +19,15 @@ REST_FRAMEWORK["DEFAULT_RENDERER_CLASSES"] = (  # noqa: F405
     "rest_framework.renderers.JSONRenderer",
     "rest_framework.renderers.BrowsableAPIRenderer",
 )
+
+# WhiteNoise serves from the app directories instead of STATIC_ROOT, so the
+# admin is styled locally without having to run collectstatic first.
+WHITENOISE_USE_FINDERS = True
+WHITENOISE_AUTOREFRESH = True
+STORAGES = {
+    **STORAGES,  # noqa: F405
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+}
 
 # ---------------------------------------------------------------------------
 # Infrastructure that development shouldn't require

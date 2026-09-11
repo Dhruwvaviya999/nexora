@@ -45,8 +45,8 @@ Activity & audit · Dashboard & analytics.
 | Django apps | 15 |
 | API route groups under `/api/v1/` | 13 |
 | TanStack Query hooks | 16 |
-| Backend test methods | 93 (README says 89) |
-| Frontend test files | 6 |
+| Backend test methods | **201** |
+| Frontend test files | 7 (45 tests) |
 | Access token lifetime | **15 minutes** |
 | Refresh token lifetime | **7 days** |
 | Page size | **20** |
@@ -93,18 +93,20 @@ distinguishes a manager.
 
 ---
 
-## 7. Auth flow — six beats
+## 7. Auth flow — seven beats
 
-1. `POST /auth/login/` → `{access, refresh, user}` (the user object is why the
-   custom serializer exists — it saves a `/auth/me/` round trip).
-2. Both tokens go into **cookies** (not httpOnly) so `src/proxy.ts` can read them
-   at the edge.
-3. Every request carries `Authorization: Bearer <access>`.
-4. On a 401, **single-flight refresh** and **one** retry. Refresh rotates and
-   blacklists the old token.
-5. `src/proxy.ts` checks cookie **presence** only; `app/(app)/layout.tsx` is the
-   real client gate; **DRF permissions are the only security boundary**.
-6. Logout blacklists the refresh token, clears cookies, and calls
+1. `POST /auth/login/` → body `{access, user}`. The user object is why the custom
+   serializer exists — it saves a `/auth/me/` round trip.
+2. The **refresh token is stripped from the body** into an **httpOnly** cookie
+   (`nexora_refresh`, path `/api/v1/auth/`). Script can never read it.
+3. The **access token lives in memory only** — a module variable, gone on reload.
+4. Every request carries `Authorization: Bearer <access>` + `credentials:"include"`.
+5. On a 401, **single-flight refresh** with an *empty body* — the browser
+   attaches the cookie. Rotation writes the new refresh back to the cookie.
+6. `src/proxy.ts` reads `nexora.session`, a marker containing `"1"` and **no
+   secret** — it runs on the frontend origin and cannot see the API origin's
+   cookie. All twelve protected route trees are matched.
+7. Logout blacklists from the cookie, clears it on every path, and calls
    `queryClient.clear()`.
 
 ---
@@ -172,20 +174,26 @@ Local development needs **nothing but PostgreSQL**.
 
 ---
 
-## 12. Your five known weaknesses
+## 12. Recently fixed — lead with these
 
-1. **Tokens are not httpOnly** — deliberate, for the edge guard. Fix: backend-set
-   httpOnly refresh cookie, access token in memory.
-2. **No `completed_at`** — analytics infers the week from `updated_at`. Documented
-   in the view docstring.
-3. **Document list N+1** — two `SerializerMethodField`s per row. Fix: `annotate`
-   + `Prefetch`, 41 queries → 3.
-4. **Empty test files** for tasks, projects, comments, mentions, documents,
-   common.
-5. **Two pending handovers per task** are possible — no constraint.
+1. **httpOnly refresh cookie** — access token memory-only, edge guard reads a
+   value-less marker. XSS exposure: 15 minutes, not 7 days.
+2. **Authenticated document download** — the old `/media/` URL was an
+   unauthenticated cross-tenant read *and* 404'd in production.
+3. **Upload validation** — 25 MB cap, extension allow-list, forced attachment.
+4. **Error boundaries** ×3 + `isError` on 8 pages.
+5. **Celery beat** — 4 nightly pruning tasks; nothing ran before.
+6. **Tests 93 → 201**, no empty files. They caught a real bug: uploads with no
+   title always returned 400 (`Document.title` lacked `blank=True`).
 
-Plus: no `CONN_MAX_AGE`, no error boundary, no production media serving, no
-scheduler for `flushexpiredtokens`.
+## 12b. Still open
+
+1. **No `CONN_MAX_AGE`** — new DB connection per request.
+2. **Document list N+1** — 41 queries for 20 rows.
+3. **No `completed_at`** — analytics approximates from `updated_at`.
+4. **Two pending handovers per task** possible.
+5. **No logging / error tracking** — the largest remaining gap.
+6. **`apps/ai` has no tests**; `lib/api/client.ts` has none either.
 
 ---
 

@@ -63,12 +63,15 @@ serves `/tasks/<uuid>`.
 path.
 
 **14. How does the frontend send the token?**
-`lib/api/client.ts` reads it from a cookie and sets the header
+`lib/api/client.ts` reads the access token from memory and sets the header
 `Authorization: Bearer <access token>` on every request.
 
 **15. Where are tokens stored?**
-In cookies — `nexora.accessToken` and `nexora.refreshToken`. Cookies rather than
-localStorage so the Next.js edge proxy can read them server-side.
+Split by lifetime. The **refresh token** is an `httpOnly` cookie
+(`nexora_refresh`) set by the backend, so script can never read it. The
+**access token** is held in memory only — a module variable that dies with the
+tab. A third cookie, `nexora.session`, holds the literal `"1"` and no secret;
+it exists only so the edge guard can decide whether to render or redirect.
 
 **16. What is TanStack Query for?**
 Server state. It caches API responses, dedupes requests, and handles refetching

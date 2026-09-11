@@ -64,31 +64,45 @@ Views: `backend/apps/accounts/views.py`. Serializers: `.../serializers.py`.
 
 **Response `200`**
 ```json
-{ "access": "<jwt>", "refresh": "<jwt>",
+{ "access": "<jwt>",
   "user": { "id": "<uuid>", "name": "...", "email": "...", ... } }
 ```
 
-The `user` key is the whole point of the custom serializer — five lines that save
-a follow-up `/auth/me/` call on every login:
+plus a header:
 
-```python
-def validate(self, attrs):
-    data = super().validate(attrs)
-    data["user"] = UserSerializer(self.user).data
-    return data
+```
+Set-Cookie: nexora_refresh=<jwt>; HttpOnly; Path=/api/v1/auth/; SameSite=Lax; Max-Age=604800
 ```
 
-Side effect: `UPDATE_LAST_LOGIN = True`, so `accounts_user.last_login` is written,
-and an `OutstandingToken` row is created for the refresh token.
+**There is no `refresh` in the body.** `LoginView.post` pops it out of the
+serializer's output and hands it to `set_refresh_cookie`, so the long-lived
+credential never reaches JavaScript:
+
+```python
+def post(self, request, *args, **kwargs):
+    response = super().post(request, *args, **kwargs)
+    if response.status_code == status.HTTP_200_OK:
+        refresh = response.data.pop("refresh", None)
+        if refresh:
+            set_refresh_cookie(response, refresh)
+    return response
+```
+
+The `user` key is the point of the custom serializer — five lines that save a
+follow-up `/auth/me/` call on every login.
+
+Side effects: `UPDATE_LAST_LOGIN = True` writes `accounts_user.last_login`, and
+an `OutstandingToken` row is created for the refresh token.
 
 **Errors** — `401` `{"detail": "No active account found with the given
 credentials"}` · `400` missing fields · `429` throttled
 
 **Chain**
-`login-form.tsx:35` → `useAuth().login` (`auth-provider.tsx:58`) →
-`authApi.login` → `apiClient.post(..., {skipAuth:true})` → `LoginView` →
-`EmailTokenObtainPairSerializer` → `tokenStorage.set(access, refresh)` (cookies)
-→ `setUser()` → `router.replace(next ?? "/dashboard")`
+`login-form.tsx` → `useAuth().login` → `authApi.login` →
+`apiClient.post(..., {skipAuth:true})` → `LoginView` →
+`EmailTokenObtainPairSerializer` → **cookie set by the server** →
+`tokenStorage.setAccess(res.access)` (memory) → `setUser()` →
+`router.replace(next ?? "/dashboard")`
 
 ---
 
@@ -96,21 +110,51 @@ credentials"}` · `400` missing fields · `429` throttled
 
 | | |
 |---|---|
-| **Auth** | Public — the refresh token *is* the credential |
-| **View** | SimpleJWT's `TokenRefreshView`, re-exported unchanged |
+| **Auth** | Public — the refresh cookie *is* the credential |
+| **View** | `CookieTokenRefreshView` (custom; replaces SimpleJWT's `TokenRefreshView`) |
 
-**Request** `{ "refresh": "<jwt>" }`
-**Response `200`** `{ "access": "<jwt>", "refresh": "<jwt>" }`
+**Request** — an empty body. The token is read from the httpOnly cookie:
 
-Both tokens come back because `ROTATE_REFRESH_TOKENS = True`. The **old refresh
-token is blacklisted immediately** (`BLACKLIST_AFTER_ROTATION = True`), so it is
-single-use.
+```http
+POST /api/v1/auth/refresh/
+Cookie: nexora_refresh=<jwt>
+Content-Type: application/json
 
-**Called only by** `refreshAccessToken()` in `lib/api/client.ts:41-62`, never by
-a hook. Concurrent 401s share one in-flight call via `refreshPromise`.
+{}
+```
 
-On failure the client calls `tokenStorage.clear()` and returns `null`, which ends
-the retry and eventually redirects to `/login`.
+**Response `200`**
+```json
+{ "access": "<jwt>" }
+```
+plus a `Set-Cookie` carrying the **rotated** refresh token.
+
+`ROTATE_REFRESH_TOKENS` is on, so a new refresh token is issued every time and
+the old one is blacklisted immediately — but it goes straight back into the
+cookie rather than into the body:
+
+```python
+data = dict(serializer.validated_data)
+rotated = data.pop("refresh", None)      # never returned to the client
+response = Response(data, status=200)
+if rotated:
+    set_refresh_cookie(response, rotated)
+```
+
+**Body fallback.** `read_refresh_token` checks the cookie first, then
+`request.data["refresh"]`. Browsers use the cookie; mobile and CLI clients,
+which have no cookie jar, post the token explicitly.
+
+**Errors** — `401 {"detail": "No refresh token provided."}` when neither is
+present · `401` when the token is expired, blacklisted or malformed.
+
+**Called only by** `refreshAccessToken()` in `lib/api/client.ts`, never by a
+hook. Concurrent 401s share one in-flight call via `refreshPromise` — which
+matters more than ever, since the cookie is shared browser state and rotation
+makes the token single-use.
+
+On failure the client calls `tokenStorage.clear()`, which drops the in-memory
+access token and the session marker, and the app redirects to `/login`.
 
 ---
 
@@ -121,23 +165,43 @@ the retry and eventually redirects to `/login`.
 | **Auth** | `IsAuthenticated` |
 | **View** | `LogoutView(APIView)` |
 
-**Request** `{ "refresh": "<jwt>" }`
-**Response `205 Reset Content`** — no body
-**Errors** — `400 {"detail": "Invalid or expired token."}` on `TokenError`
+**Request** — an empty body; the token comes from the cookie.
+`{"refresh": "<jwt>"}` is still accepted for non-browser clients.
 
-**Blacklists only the supplied refresh token.** The current *access* token stays
-valid until it expires (up to 15 minutes) — inherent to stateless JWT. Other
-devices are unaffected.
+**Response `205 Reset Content`**, with a `Set-Cookie` that clears
+`nexora_refresh`.
 
-**Client side** (`auth-provider.tsx:67-79`) — the request is best-effort; a
-`finally` block always runs:
+**The cookie is cleared on every path**, including both failure paths — a
+client must always be able to end its own session locally, even if the token
+was already invalid:
+
+```python
+token = read_refresh_token(request)
+if not token:
+    return clear_refresh_cookie(Response({"detail": "No refresh token provided."}, 400))
+try:
+    RefreshToken(token).blacklist()
+except TokenError:
+    return clear_refresh_cookie(Response({"detail": "Invalid or expired token."}, 400))
+return clear_refresh_cookie(Response(status=205))
+```
+
+`clear_refresh_cookie` passes the same `path`, `domain` and `samesite` used
+when setting it — Django's `delete_cookie` requires that, or the browser keeps
+the original and logout silently fails.
+
+**Client side** — the request is best-effort; a `finally` block always runs:
 
 ```ts
-tokenStorage.clear();
+tokenStorage.clear();     // in-memory token + session marker
 setUser(null);
-queryClient.clear();          // critical: no stale data for the next user
+queryClient.clear();      // critical: no stale data for the next user
 router.replace(ROUTES.login);
 ```
+
+**What it does not do:** the current *access* token stays valid until it
+expires (up to 15 minutes) — inherent to stateless JWT. Other devices are
+unaffected.
 
 ---
 
@@ -248,11 +312,12 @@ a mismatched password are reported the same way, as field errors:
 { "detail": "Password updated. You can sign in with your new password." }
 ```
 
-**Two side effects that matter:**
+**Three side effects that matter:**
 
 ```python
 _blacklist_all_refresh_tokens(user)      # every outstanding session is revoked
 queue_templated_email(template="password_changed", ...)
+return clear_refresh_cookie(Response(...))   # and this browser's cookie too
 ```
 
 The revocation comment: *"Refresh tokens outlive the reset by days, so anyone
@@ -275,8 +340,14 @@ Every other endpoint in the API expects:
 Authorization: Bearer <access token>
 ```
 
-set automatically by `lib/api/client.ts:78-81` unless `skipAuth` is passed
-(login, register, refresh).
+set automatically by `lib/api/client.ts` unless `skipAuth` is passed (login,
+register, refresh). Every request also goes out with `credentials: "include"`,
+so the browser can attach the refresh cookie — which, being path-scoped to
+`/api/v1/auth/`, is only actually transmitted to refresh and logout.
+
+This requires `CORS_ALLOW_CREDENTIALS = True` on the API, which is safe because
+`CORS_ALLOWED_ORIGINS` is an explicit list (browsers forbid credentials with a
+wildcard origin).
 
 **WebSocket** authentication is different — the browser cannot set headers, so
 the token rides in the query string:

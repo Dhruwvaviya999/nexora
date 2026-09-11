@@ -47,7 +47,7 @@ Verified against `backend/requirements.txt` and `frontend/package.json`.
 | PDF export | reportlab | 4.4.10 |
 | API schema | drf-spectacular (OpenAPI 3) | 0.28.0 |
 | ASGI server | uvicorn (daphne in dev) | 0.52.4 |
-| Containers | Docker + docker compose | — |
+| Containers | Docker + docker compose (6 services) | — |
 | CI | GitHub Actions | `.github/workflows/ci.yml` |
 
 ---
@@ -179,13 +179,17 @@ memorisation sheet.
 
 ## 5. Authentication in six lines
 
-1. `POST /api/v1/auth/login/` with email + password returns `{access, refresh, user}`.
-2. Tokens are stored in **cookies** (not httpOnly) by `lib/auth/token-storage.ts`.
-3. Every request gets `Authorization: Bearer <access>` from `lib/api/client.ts`.
-4. On a `401` the client silently refreshes once and retries; concurrent 401s
-   share one in-flight refresh.
-5. `src/proxy.ts` bounces logged-out users at the edge (cookie **presence** only).
-6. `app/(app)/layout.tsx` is the real gate: no user means redirect to `/login`.
+1. `POST /api/v1/auth/login/` returns `{access, user}` in the body and sets the
+   refresh token as an **httpOnly** cookie — script can never read it.
+2. The access token is held **in memory only** (`lib/auth/token-storage.ts`).
+3. Every request gets `Authorization: Bearer <access>` plus
+   `credentials: "include"` from `lib/api/client.ts`.
+4. On a `401` the client refreshes with an *empty body* (the browser attaches
+   the cookie) and retries once; concurrent 401s share one in-flight refresh.
+5. `src/proxy.ts` bounces logged-out users at the edge using `nexora.session`, a
+   marker cookie containing `"1"` and no secret.
+6. `app/(app)/layout.tsx` is the real client gate; **DRF permissions are the
+   only security boundary**.
 
 Details: **[08-authentication-authorization.md](08-authentication-authorization.md)**.
 

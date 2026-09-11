@@ -45,6 +45,17 @@ RUN useradd --create-home --uid 1000 nexora \
     && chown -R nexora:nexora /app
 USER nexora
 
+# Collect static so WhiteNoise can serve the admin's CSS/JS with DEBUG off --
+# otherwise /admin/ renders unstyled in production. Build-time placeholders are
+# used because the real settings need a database that does not exist yet; only
+# file collection happens here, so nothing sensitive is baked into the image.
+RUN DJANGO_SETTINGS_MODULE=config.settings.production \
+    SECRET_KEY=build-time-only-not-used-at-runtime \
+    DATABASE_URL=postgres://build:build@localhost:5432/build \
+    ALLOWED_HOSTS=localhost \
+    CORS_ALLOWED_ORIGINS=http://localhost \
+    python manage.py collectstatic --noinput
+
 EXPOSE 8000
 
 # Uvicorn directly: an ASGI server is required for the websocket routes, and

@@ -22,13 +22,20 @@ import { BarChart, GroupedBarChart, HBarChart } from "@/components/charts/charts
 import { useWorkspaceContext } from "@/providers/workspace-provider";
 import { useAnalytics } from "@/hooks/use-analytics";
 import { TASK_PRIORITIES, TASK_STATUSES } from "@/lib/constants";
+import { ErrorState } from "@/components/shared/error-state";
 
 export default function AnalyticsPage() {
   const { activeWorkspace, activeWorkspaceId, isLoading: wsLoading } =
     useWorkspaceContext();
-  const { data, isLoading } = useAnalytics(activeWorkspaceId ?? undefined);
+  const { data, isLoading, isError, error, refetch } = useAnalytics(activeWorkspaceId ?? undefined);
 
   if (!wsLoading && !activeWorkspaceId) return <NoWorkspace />;
+
+  // A failed fetch used to be indistinguishable from a slow one and
+  // spun forever; surface the real error instead.
+  if (isError) {
+    return <ErrorState error={error} onRetry={() => refetch()} />;
+  }
 
   if (isLoading || !data) {
     return (

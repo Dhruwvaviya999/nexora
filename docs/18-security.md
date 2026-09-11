@@ -95,8 +95,9 @@ CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")     # explicit list, no wildc
 - `CorsMiddleware` sits second, above `CommonMiddleware`, as django-cors-headers
   requires.
 - `CORS_ALLOW_ALL_ORIGINS` is **never** set.
-- `CORS_ALLOW_CREDENTIALS` is **not** set — correct, since auth is a header, not a
-  cookie.
+- `CORS_ALLOW_CREDENTIALS = True` — required so the browser sends the httpOnly
+  refresh cookie to the auth endpoints. Safe because the allowed origins are an
+  explicit list, never a wildcard.
 - WebSockets are validated with `OriginValidator` against the same list, and a
   missing `Origin` header is refused.
 
@@ -154,10 +155,13 @@ structurally not applicable to it: a cross-site request cannot forge an
 
 The middleware is doing real work only for the Django admin.
 
-**However**, tokens *are* in cookies on the frontend origin. The mitigations
-there are `SameSite=Lax` on the cookie and the fact that the API ignores cookies
-entirely. That combination is sound. But it depends on the frontend never being
-changed to send cookies to the API.
+**Since the httpOnly change**, the API *does* accept a cookie — the refresh
+token — on two endpoints. Those are protected by `SameSite=Lax`, which stops a
+cross-site POST from carrying it, and by the token being path-scoped to
+`/api/v1/auth/`. Every other endpoint still authenticates by header only, so the
+CSRF surface is limited to refresh and logout, neither of which is
+state-changing in a way an attacker benefits from (the worst case is logging
+someone out).
 
 ### 2.2 XSS
 
@@ -201,64 +205,92 @@ in front of it very well might. The code comment acknowledges this
 
 Ordered by severity.
 
-### 🔴 3.1 Tokens are readable by JavaScript (`httpOnly` not set)
+### ✅ 3.1 Tokens readable by JavaScript — **FIXED**
 
-**Where:** `frontend/src/lib/auth/token-storage.ts:12,18`
+**Was:** both tokens were written to non-httpOnly cookies by page script, so any
+XSS could exfiltrate a 7-day refresh token.
 
-```ts
-const COOKIE_OPTS = "path=/; SameSite=Lax";     // no HttpOnly, no Secure
-document.cookie = `${name}=${encodeURIComponent(value)}; Max-Age=${MAX_AGE}; ${COOKIE_OPTS}`;
-```
+**Now:** the refresh token is issued by the backend as an **httpOnly** cookie and
+never enters JavaScript at all; the access token is held in a module-scoped
+variable (memory only) and dies with the tab.
 
-**Impact:** any XSS on the frontend origin can read both tokens and exfiltrate
-them. The refresh token is valid for 7 days.
+| Piece | File |
+|---|---|
+| Cookie helpers (set / clear / read) | `backend/apps/accounts/cookies.py` |
+| Login strips `refresh` from the body into the cookie | `LoginView.post` |
+| Cookie-based refresh, rotated token never in the body | `CookieTokenRefreshView` |
+| Logout blacklists from the cookie and clears it | `LogoutView.post` |
+| Password-reset confirm also clears it | `PasswordResetConfirmView.post` |
+| Access token in memory; no token in any cookie | `frontend/src/lib/auth/token-storage.ts` |
 
-**Why it is like this:** cookies (not localStorage) so `proxy.ts` can read them
-server-side. The file documents the trade-off and calls it "good enough for this
-foundation".
+**The cross-origin problem, and how it is solved.** `proxy.ts` runs at the edge
+on the frontend origin and cannot read a cookie scoped to the API origin. It no
+longer needs to: it reads `nexora.session`, a marker cookie whose value is the
+literal string `"1"` and which contains **no credential**. Forging it gains
+nothing — the page renders, every API call 401s, and the layout redirects.
 
-**Note:** `httpOnly` cannot simply be added — the client-side code that sets and
-reads them would break. The real fix is architectural: have the backend set an
-httpOnly refresh cookie on login, keep the access token in memory only, and add a
-refresh endpoint that reads the cookie. That also removes the need for
-`proxy.ts` to read tokens at all.
+**Residual risk:** an XSS can still read the in-memory access token for up to 15
+minutes. That is inherent to any browser client and is a very different blast
+radius from a week-long refresh token.
 
-**Mitigating factors:** no `dangerouslySetInnerHTML`, React escaping, and no
-user-supplied HTML rendering path currently exists.
+**Tests:** `apps/accounts/tests.py::RefreshCookieTests` (11 tests) pins the whole
+contract — no `refresh` in the login body, httpOnly/SameSite/Max-Age flags,
+refresh from cookie with an empty body, rotation invalidating the previous
+token, logout and reset clearing it, and the non-browser body fallback.
+`frontend/src/lib/auth/token-storage.test.ts` asserts the negative space: no
+token is ever written anywhere script can read at rest.
 
-### 🔴 3.2 `Secure` flag not set on token cookies
+### ✅ 3.2 `Secure` flag not set on token cookies — **FIXED**
 
-Same file. Over plain HTTP the cookies are sent in cleartext. In practice the
-production settings force HTTPS via `SECURE_SSL_REDIRECT`, but that is the
-*backend's* redirect — it does not govern the frontend origin's cookies.
+The refresh cookie takes `secure` from `AUTH_COOKIE_SECURE` (set `True` on any
+HTTPS deployment; the env templates say so). The session marker adds `; Secure`
+automatically whenever `location.protocol === "https:"`.
 
-**Fix:** append `; Secure` when `location.protocol === "https:"`.
+`AUTH_COOKIE_SAMESITE` is configurable and defaults to `Lax`, which is correct
+whenever the frontend and API share a site — `localhost:3000` → `localhost:8000`
+and `app.example.com` → `api.example.com` both qualify. A genuinely cross-site
+split needs `None` **and** `Secure`, which the comments call out.
 
-### 🟠 3.3 No file upload restrictions
+`CORS_ALLOW_CREDENTIALS = True` is now required and set, and is safe because
+`CORS_ALLOWED_ORIGINS` is an explicit list — browsers forbid credentials with a
+wildcard origin anyway.
 
-Any authenticated workspace member can upload a file of **any type and any size**.
-There is no `DATA_UPLOAD_MAX_MEMORY_SIZE` override, no MIME whitelist, no size
-check in `DocumentSerializer`.
+### ✅ 3.3 No file upload restrictions — **FIXED**
 
-**Impact:** disk exhaustion; storing executables or HTML/SVG. In `DEBUG` mode
-those become fetchable URLs on the API origin — an HTML file served from the API
-origin is a stored-XSS vector against that origin.
+Three layers now:
 
-**Fix:** a `validate_file` on the serializer checking size and extension, plus
-`X-Content-Type-Options: nosniff` (already on in production) and
-`Content-Disposition: attachment` when serving.
+1. **Size** — `MAX_UPLOAD_SIZE` (25 MB default) checked in
+   `DocumentSerializer.validate_file`, so the user gets a field error rather
+   than a raw 413. `DATA_UPLOAD_MAX_MEMORY_SIZE` is derived from it so an
+   oversized body is refused before being buffered.
+2. **Type** — an extension allow-list (`ALLOWED_UPLOAD_EXTENSIONS`). `.html`,
+   `.svg` and `.exe` are rejected outright.
+3. **Serving** — files are no longer reachable at a public `/media/` URL at all
+   (see 3.3b), and the download view forces
+   `Content-Disposition: attachment` plus `X-Content-Type-Options: nosniff`.
 
-### 🟠 3.4 Edge guard does not cover most protected routes
+**Tests:** `apps/documents/tests.py` covers oversized, `.html`, `.exe`, and an
+allowed non-text type, asserting the *specific* rejection reason so the tests
+cannot pass for the wrong reason.
 
-`proxy.ts` matches only `/dashboard/*`, `/workspaces/*`, `/login`, `/register`.
-Ten other authenticated route trees rely purely on the client-side layout gate.
+### ✅ 3.3b Uploads were publicly readable — **FIXED (new finding)**
 
-**Impact:** no data exposure (there is no token, so every API call 401s), but the
-protection story is inconsistent and a future page that renders server-side would
-not be covered.
+Raising 3.3 surfaced a worse problem that was not in the original list:
+`file_url` pointed at `MEDIA_URL`, an **unauthenticated** path. Anyone holding
+or guessing it could read another workspace's document, bypassing every
+permission check in the project.
 
-**Fix:** extend the matcher, or invert it to match everything except a public
-allow-list.
+Uploads are now streamed by `GET /documents/{id}/download/`, which goes through
+`get_object()` and therefore the normal membership filter. `file_url` points
+there. Tenancy is tested: an outsider gets 404, anonymous gets 401.
+
+### ✅ 3.4 Edge guard did not cover most protected routes — **FIXED**
+
+The matcher now covers all twelve authenticated route trees — `/dashboard`,
+`/workspaces`, `/projects`, `/tasks`, `/handovers`, `/documents`, `/ai`,
+`/activity`, `/search`, `/settings`, `/notifications`, `/invitations` — so a
+logged-out visitor is redirected at the edge instead of seeing a shell flash.
+Password-reset pages remain deliberately excluded from the auth-page bounce.
 
 ### 🟠 3.5 AI endpoints leak workspace existence
 
@@ -281,21 +313,32 @@ exist. Low value given UUIDs are unguessable, but it is an inconsistency.
   register with a colleague's address and accept invitations meant for them —
   though they would need to know the invite exists.
 
-### 🟡 3.7 Blacklisted tokens are never pruned
+### ✅ 3.7 Blacklisted tokens never pruned — **FIXED**
 
-`token_blacklist_outstandingtoken` grows with **every** refresh. SimpleJWT ships
-`manage.py flushexpiredtokens`; nothing in this repository schedules it. No Celery
-beat schedule exists at all.
+A `CELERY_BEAT_SCHEDULE` now exists (there was no scheduler at all), with a
+`beat` service in `docker-compose.yml`. Four nightly maintenance tasks in
+`apps/common/tasks.py`:
 
-**Impact:** unbounded table growth, and every token validation checks the
-blacklist.
+| Task | Does |
+|---|---|
+| `common.flush_expired_tokens` | Runs SimpleJWT's `flushexpiredtokens` — the important one, since the table gains a row per refresh and is read on every token validation |
+| `common.expire_stale_invitations` | Flips past-due pending invites to `expired`, so counts stop drifting |
+| `common.prune_embedding_jobs` | Drops finished jobs older than 30 days, leaving unfinished ones visible |
+| `common.prune_search_history` | Drops raw query text older than 90 days — a privacy window as much as a storage one |
+
+All four are idempotent, so a duplicated beat tick is harmless. Exactly **one**
+beat process must run per deployment; the compose comment says so.
+
+**Tests:** `apps/common/tests.py::MaintenanceTaskTests`, including one that
+asserts every task name in the schedule actually resolves in the Celery registry
+— a typo there would otherwise fail silently at 3am.
 
 ### 🟡 3.8 No security headers beyond Django's defaults
 
 No Content-Security-Policy, no `Referrer-Policy`, no `Permissions-Policy` — on
 either the Django side or in `next.config.ts` (which is an empty config object).
 
-A CSP would meaningfully reduce the impact of risk 3.1.
+A CSP would reduce the residual XSS impact described in 3.1.
 
 ### 🟡 3.9 No error tracking or audit of security events
 
@@ -359,21 +402,29 @@ control.
 
 ---
 
-## Part 5 — Prioritised fix list
+## Part 5 — Fix status
 
-| # | Fix | Severity | Effort |
+### Fixed in this pass
+
+| # | Item | What changed |
+|---|---|---|
+| 1 | httpOnly refresh cookie | Backend issues it; access token is memory-only; edge guard reads a value-less marker instead |
+| 2 | `Secure` / `SameSite` on cookies | Both configurable, documented, and applied automatically on HTTPS |
+| 3 | Upload size + type limits | `validate_file` with a 25 MB cap and an extension allow-list |
+| 3b | **Public media URLs** (new finding) | Replaced with an authenticated, workspace-scoped download endpoint |
+| 4 | Edge guard coverage | All twelve protected route trees now matched |
+| 7 | Unbounded token table | Celery beat schedule + `beat` service + four pruning tasks |
+
+### Still open
+
+| # | Item | Severity | Fix |
 |---|---|---|---|
-| 1 | Move the refresh token to an httpOnly, Secure, SameSite cookie set by the backend; keep the access token in memory | 🔴 | High — changes the auth flow and removes the need for `proxy.ts` to read cookies |
-| 2 | Add `; Secure` to cookies when the page is HTTPS | 🔴 | Trivial |
-| 3 | File size + extension validation on upload; serve with `Content-Disposition: attachment` | 🟠 | Low |
-| 4 | Extend the `proxy.ts` matcher to every authenticated route | 🟠 | Trivial |
-| 5 | Return 404 for both branches in `resolve_workspace` | 🟠 | Trivial |
-| 6 | Add a Content-Security-Policy header | 🟡 | Low |
-| 7 | Schedule `flushexpiredtokens` (Celery beat) | 🟡 | Low |
-| 8 | Configure `LOGGING` + an error tracker | 🟡 | Low |
-| 9 | Email verification on registration | 🟡 | Medium |
-| 10 | Change `Comment.author` to `SET_NULL`; add a user-deletion strategy for owned workspaces | 🟡 | Medium (migration) |
+| 3.5 | AI endpoints leak workspace existence (404 vs 403) | 🟠 | Raise `NotFound` in both branches of `resolve_workspace` |
+| 3.6 | No account lockout, MFA or email verification | 🟡 | Verification email on register; lockout after N failures |
+| 3.8 | No Content-Security-Policy | 🟡 | Add CSP headers; reduces the residual XSS impact in 3.1 |
+| 3.9 | No security observability | 🟡 | `LOGGING` config + an error tracker; record failed logins and permission denials |
+| 3.10 | `Comment.author` / `Workspace.owner` cascade on user delete | 🟡 | `SET_NULL` for comments; block or force transfer for owned workspaces |
+| 3.11 | Fernet key derived from `SECRET_KEY` when unset | 🟢 | Set a dedicated `AI_FIELD_ENCRYPTION_KEY` in production |
 
----
-
-**Next:** [19 — Performance & Scalability](19-performance-scalability.md)
+The highest-value remaining item is **3.9** — without logging, none of the
+controls above can be observed failing.
